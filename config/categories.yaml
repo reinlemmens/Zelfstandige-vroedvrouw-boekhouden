@@ -1,0 +1,157 @@
+version: "1.0"
+categories:
+  - id: omzet
+    name: Omzet
+    type: income
+    tax_deductible: false
+    description: Revenue from services
+
+  - id: admin-kosten
+    name: Admin kosten
+    type: expense
+    tax_deductible: true
+    description: Administrative costs
+
+  - id: bankkosten
+    name: Bankkosten
+    type: expense
+    tax_deductible: true
+    description: Bank fees and charges
+
+  - id: boeken-en-tijdschriften
+    name: Boeken en tijdschriften
+    type: expense
+    tax_deductible: true
+    description: Books and magazines
+
+  - id: bureelbenodigdheden
+    name: Bureelbenodigdheden
+    type: expense
+    tax_deductible: true
+    description: Office supplies
+
+  - id: drukwerk-en-publiciteit
+    name: Drukwerk en publiciteit
+    type: expense
+    tax_deductible: true
+    description: Printing and advertising
+
+  - id: huur-onroerend-goed
+    name: Huur onroerend goed
+    type: expense
+    tax_deductible: true
+    description: Real estate rent
+
+  - id: interne-storting
+    name: Interne storting
+    type: expense
+    tax_deductible: false
+    description: Internal transfer
+
+  - id: investeringen-over-3-jaar
+    name: Investeringen over 3 jaar
+    type: expense
+    tax_deductible: true
+    description: Investments depreciated over 3 years
+
+  - id: klein-materiaal
+    name: Klein materiaal
+    type: expense
+    tax_deductible: true
+    description: Small equipment
+
+  - id: kosten-opleiding-en-vorming
+    name: Kosten opleiding en vorming
+    type: expense
+    tax_deductible: true
+    description: Training and education costs
+
+  - id: licenties-software
+    name: Licenties software
+    type: expense
+    tax_deductible: true
+    description: Software licenses
+
+  - id: loon
+    name: Loon
+    type: expense
+    tax_deductible: true
+    description: Wages
+
+  - id: maatschap-huis-van-meraki
+    name: Maatschap Huis van Meraki
+    type: expense
+    tax_deductible: true
+    description: Partnership Huis van Meraki
+
+  - id: medisch-materiaal
+    name: Medisch materiaal
+    type: expense
+    tax_deductible: true
+    description: Medical supplies
+
+  - id: onthaal
+    name: Onthaal
+    type: expense
+    tax_deductible: true
+    description: Reception costs
+
+  - id: relatiegeschenken
+    name: Relatiegeschenken
+    type: expense
+    tax_deductible: true
+    description: Business gifts
+
+  - id: restaurant
+    name: Restaurant
+    type: expense
+    tax_deductible: true
+    description: Restaurant expenses
+
+  - id: sociale-bijdragen
+    name: Sociale bijdragen
+    type: expense
+    tax_deductible: true
+    description: Social contributions
+
+  - id: telefonie
+    name: Telefonie
+    type: expense
+    tax_deductible: true
+    description: Telephone costs
+
+  - id: verkeerde-rekening
+    name: Verkeerde rekening
+    type: expense
+    tax_deductible: false
+    description: Wrong account (correction)
+
+  - id: verzekering-beroepsaansprakelijkheid
+    name: Verzekering beroepsaansprakelijkheid
+    type: expense
+    tax_deductible: true
+    description: Professional liability insurance
+
+  - id: vapz
+    name: Vrij Aanvullend Pensioen Zelfstandigen
+    type: expense
+    tax_deductible: true
+    description: Supplementary pension for self-employed
+
+  - id: vervoer
+    name: Vervoer
+    type: expense
+    tax_deductible: true
+    description: Transport costs
+
+  - id: mastercard
+    name: Mastercard
+    type: expense
+    tax_deductible: false
+    description: Mastercard settlement (excluded from detailed reporting)
+
+  - id: sponsoring
+    name: Sponsoring
+    type: expense
+    tax_deductible: true
+    description: Sponsorship costs

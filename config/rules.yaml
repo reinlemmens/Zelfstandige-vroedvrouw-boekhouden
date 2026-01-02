@@ -1,0 +1,28 @@
+version: "1.0"
+rules:
+  - id: rule-dott
+    pattern: "Dott"
+    pattern_type: contains
+    match_field: counterparty_name
+    target_category: vervoer
+    priority: 10
+    enabled: true
+    source: manual
+
+  - id: rule-nmbs
+    pattern: "NMBS"
+    pattern_type: contains
+    match_field: counterparty_name
+    target_category: vervoer
+    priority: 10
+    enabled: true
+    source: manual
+
+  - id: rule-bankkosten
+    pattern: "BELFIUS"
+    pattern_type: contains
+    match_field: description
+    target_category: bankkosten
+    priority: 20
+    enabled: true
+    source: manual

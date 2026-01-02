@@ -1,0 +1,14 @@
+fiscal_year: 2025
+data_dir: data/output
+rules_file: config/rules.yaml
+categories_file: config/categories.yaml
+
+import:
+  default_source_type: bank_csv
+  exclude_patterns:
+    - "MASTERCARD.*AFREKENING"
+    - "KREDIETKAART.*AFREKENING"
+
+output:
+  default_format: table
+  date_format: "%Y-%m-%d"

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plv"
+version = "0.1.0"
+description = "P&L tool for Belgian midwife tax filing - Transaction categorization"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Vroedvrouw Goedele"}
+]
+dependencies = [
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "pdfplumber>=0.10.0",
+    "PyYAML>=6.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+plv = "src.cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
