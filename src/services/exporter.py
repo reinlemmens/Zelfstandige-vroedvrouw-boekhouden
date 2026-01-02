@@ -43,25 +43,30 @@ def export_to_excel(
     # Sort by date (descending)
     transactions.sort(key=lambda t: t.booking_date, reverse=True)
 
-    # Convert to list of dicts for DataFrame
+    # Convert to list of dicts for DataFrame - retain all columns from input
     data = []
     for t in transactions:
         row = {
+            'Rekening': t.own_account,
+            'Boekingsdatum': t.booking_date,
+            'Valutadatum': t.value_date,
+            'Rekeninguittrekselnr': t.statement_number,
+            'Transactienr': t.transaction_number,
+            'Tegenpartij': t.counterparty_name,
+            'Rekening Tegenpartij': t.counterparty_iban,
+            'Straat en nummer': t.counterparty_street,
+            'Postcode en plaats': t.counterparty_postal_city,
+            'BIC': t.counterparty_bic,
+            'Landcode': t.counterparty_country,
+            'Omschrijving': t.description,
+            'Bedrag': float(t.amount),  # Convert Decimal to float for Excel
+            'Devies': t.currency,
+            'Categorie': t.category,
+            'Therapeutisch': 'Ja' if t.is_therapeutic else 'Nee',
+            'Uitgesloten': 'Ja' if t.is_excluded else 'Nee',
+            'Reden uitsluiting': t.exclusion_reason,
             'ID': t.id,
-            'Source': t.source_file,
-            'Date': t.booking_date,
-            'Value Date': t.value_date,
-            'Amount': float(t.amount),  # Convert Decimal to float for Excel
-            'Currency': t.currency,
-            'Counterparty': t.counterparty_name,
-            'IBAN': t.counterparty_iban,
-            'Description': t.description,
-            'Category': t.category,
-            'Therapeutic': 'Yes' if t.is_therapeutic else 'No',
-            'Excluded': 'Yes' if t.is_excluded else 'No',
-            'Exclusion Reason': t.exclusion_reason,
-            'Statement': t.statement_number,
-            'Transaction #': t.transaction_number,
+            'Bron': t.source_file,
         }
         data.append(row)
 
@@ -106,25 +111,30 @@ def export_to_csv(
     # Sort by date (descending)
     transactions.sort(key=lambda t: t.booking_date, reverse=True)
 
-    # Convert to list of dicts for DataFrame
+    # Convert to list of dicts for DataFrame - retain all columns from input
     data = []
     for t in transactions:
         row = {
+            'Rekening': t.own_account,
+            'Boekingsdatum': t.booking_date,
+            'Valutadatum': t.value_date,
+            'Rekeninguittrekselnr': t.statement_number,
+            'Transactienr': t.transaction_number,
+            'Tegenpartij': t.counterparty_name,
+            'Rekening Tegenpartij': t.counterparty_iban,
+            'Straat en nummer': t.counterparty_street,
+            'Postcode en plaats': t.counterparty_postal_city,
+            'BIC': t.counterparty_bic,
+            'Landcode': t.counterparty_country,
+            'Omschrijving': t.description,
+            'Bedrag': t.amount,
+            'Devies': t.currency,
+            'Categorie': t.category,
+            'Therapeutisch': t.is_therapeutic,
+            'Uitgesloten': t.is_excluded,
+            'Reden uitsluiting': t.exclusion_reason,
             'ID': t.id,
-            'Source': t.source_file,
-            'Date': t.booking_date,
-            'Value Date': t.value_date,
-            'Amount': t.amount,
-            'Currency': t.currency,
-            'Counterparty': t.counterparty_name,
-            'IBAN': t.counterparty_iban,
-            'Description': t.description,
-            'Category': t.category,
-            'Therapeutic': t.is_therapeutic,
-            'Excluded': t.is_excluded,
-            'Exclusion Reason': t.exclusion_reason,
-            'Statement': t.statement_number,
-            'Transaction #': t.transaction_number,
+            'Bron': t.source_file,
         }
         data.append(row)
 

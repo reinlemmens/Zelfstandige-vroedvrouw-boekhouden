@@ -45,6 +45,11 @@ class Transaction:
     # Optional fields
     counterparty_name: Optional[str] = None
     counterparty_iban: Optional[str] = None
+    counterparty_street: Optional[str] = None
+    counterparty_postal_city: Optional[str] = None
+    counterparty_bic: Optional[str] = None
+    counterparty_country: Optional[str] = None
+    own_account: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
     matched_rule_id: Optional[str] = None
@@ -87,6 +92,11 @@ class Transaction:
             'currency': self.currency,
             'counterparty_name': self.counterparty_name,
             'counterparty_iban': self.counterparty_iban,
+            'counterparty_street': self.counterparty_street,
+            'counterparty_postal_city': self.counterparty_postal_city,
+            'counterparty_bic': self.counterparty_bic,
+            'counterparty_country': self.counterparty_country,
+            'own_account': self.own_account,
             'description': self.description,
             'category': self.category,
             'matched_rule_id': self.matched_rule_id,
@@ -111,6 +121,11 @@ class Transaction:
             currency=data.get('currency', 'EUR'),
             counterparty_name=data.get('counterparty_name'),
             counterparty_iban=data.get('counterparty_iban'),
+            counterparty_street=data.get('counterparty_street'),
+            counterparty_postal_city=data.get('counterparty_postal_city'),
+            counterparty_bic=data.get('counterparty_bic'),
+            counterparty_country=data.get('counterparty_country'),
+            own_account=data.get('own_account'),
             description=data.get('description'),
             category=data.get('category'),
             matched_rule_id=data.get('matched_rule_id'),

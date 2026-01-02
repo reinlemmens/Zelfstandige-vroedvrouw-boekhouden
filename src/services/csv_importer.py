@@ -1,6 +1,7 @@
 """Belfius bank CSV importer service."""
 
 import csv
+import hashlib
 import logging
 import re
 from datetime import datetime
@@ -154,12 +155,6 @@ class CSVImporter:
         statement_number = row[COL_STATEMENT_NUMBER].strip()
         transaction_number = row[COL_TRANSACTION_NUMBER].strip()
 
-        if not statement_number or not transaction_number:
-            return None
-
-        # Generate unique ID
-        tx_id = f"{statement_number}-{transaction_number}"
-
         # Parse dates (DD/MM/YYYY format)
         booking_date = self._parse_belgian_date(row[COL_BOOKING_DATE])
         value_date = self._parse_belgian_date(row[COL_VALUE_DATE])
@@ -168,8 +163,13 @@ class CSVImporter:
         amount = parse_belgian_amount(row[COL_AMOUNT])
 
         # Get optional fields
+        own_account = row[COL_ACCOUNT].strip() or None
         counterparty_iban = row[COL_COUNTERPARTY_ACCOUNT].strip() or None
         counterparty_name = row[COL_COUNTERPARTY_NAME].strip() or None
+        counterparty_street = row[COL_STREET].strip() or None
+        counterparty_postal_city = row[COL_POSTAL_CITY].strip() or None
+        counterparty_bic = row[COL_BIC].strip() if len(row) > COL_BIC else None
+        counterparty_country = row[COL_COUNTRY_CODE].strip() if len(row) > COL_COUNTRY_CODE else None
 
         # Build description from transaction and communications
         transaction_desc = row[COL_TRANSACTION_DESC].strip()
@@ -177,6 +177,18 @@ class CSVImporter:
 
         # Use the more detailed description
         description = transaction_desc if transaction_desc else communications
+
+        # Generate unique ID
+        if statement_number and transaction_number:
+            tx_id = f"{statement_number}-{transaction_number}"
+        else:
+            # For transactions without statement/transaction numbers (e.g., BEATS charges),
+            # generate a hash-based ID from date + amount + description
+            hash_input = f"{booking_date.isoformat()}|{amount}|{description}"
+            tx_hash = hashlib.md5(hash_input.encode()).hexdigest()[:8]
+            tx_id = f"NONUM-{tx_hash}"
+            statement_number = statement_number or None
+            transaction_number = transaction_number or None
 
         # Currency
         currency = row[COL_CURRENCY].strip().upper()
@@ -195,6 +207,11 @@ class CSVImporter:
             currency=currency,
             counterparty_name=counterparty_name,
             counterparty_iban=counterparty_iban,
+            counterparty_street=counterparty_street,
+            counterparty_postal_city=counterparty_postal_city,
+            counterparty_bic=counterparty_bic,
+            counterparty_country=counterparty_country,
+            own_account=own_account,
             description=description,
         )
 

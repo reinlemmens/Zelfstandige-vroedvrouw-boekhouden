@@ -3,7 +3,7 @@
 import logging
 from decimal import Decimal
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Set
 
 import pandas as pd
 from openpyxl import Workbook
@@ -11,19 +11,44 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 from src.models.asset import Asset
-from src.models.report import Report, ReportLineItem
+from src.models.report import Report, ReportLineItem, DisallowedExpenseItem
 from src.models.transaction import Transaction
 from src.services.depreciation import get_depreciation_for_year
 
 logger = logging.getLogger(__name__)
 
+# Categories that are excluded from P&L (owner withdrawals, corrections, etc.)
+EXCLUDED_CATEGORY_TYPES = {'excluded'}
+
 
 class ReportGenerator:
     """Generates a P&L report from transactions and assets."""
 
-    def __init__(self, transactions: List[Transaction], assets: List[Asset]):
+    def __init__(self, transactions: List[Transaction], assets: List[Asset],
+                 categories: Dict = None):
         self.transactions = transactions
         self.assets = assets
+        self.categories = categories or {}
+        self._excluded_categories: Set[str] = self._get_excluded_categories()
+
+    def _get_excluded_categories(self) -> Set[str]:
+        """Get set of category IDs that should be excluded from P&L."""
+        excluded = set()
+        for cat_id, cat in self.categories.items():
+            if hasattr(cat, 'type') and cat.type in EXCLUDED_CATEGORY_TYPES:
+                excluded.add(cat_id)
+        # Always exclude these known categories
+        excluded.update({'prive-opname', 'loon', 'verkeerde-rekening',
+                        'interne-storting', 'mastercard'})
+        return excluded
+
+    def _get_partially_deductible_categories(self) -> Dict[str, int]:
+        """Get categories with partial deductibility and their percentages."""
+        partial = {}
+        for cat_id, cat in self.categories.items():
+            if hasattr(cat, 'deductibility_pct') and cat.deductibility_pct < 100:
+                partial[cat_id] = cat.deductibility_pct
+        return partial
 
     def generate_pnl_report(self, fiscal_year: int) -> Report:
         """
@@ -57,14 +82,18 @@ class ReportGenerator:
             logger.debug(f"Therapeutic: {thera_amount}, Non-therapeutic: {non_thera_amount}")
 
             if thera_amount > 0:
-                omzet_item.sub_items.append(ReportLineItem('Therapeutic', thera_amount, 'income'))
+                omzet_item.sub_items.append(ReportLineItem('Therapeutisch (BTW-vrijgesteld art. 44)', thera_amount, 'income'))
             if non_thera_amount > 0:
-                omzet_item.sub_items.append(ReportLineItem('Non-therapeutic', non_thera_amount, 'income'))
+                omzet_item.sub_items.append(ReportLineItem('Niet-therapeutisch', non_thera_amount, 'income'))
             
             report.income_items.append(omzet_item)
 
-        # Handle expenses
-        expense_df = df[df['category'].notna() & (df['category'] != 'omzet')]
+        # Handle expenses (excluding owner withdrawals and corrections)
+        expense_df = df[
+            df['category'].notna() &
+            (df['category'] != 'omzet') &
+            (~df['category'].isin(self._excluded_categories))
+        ]
         if not expense_df.empty:
             expense_groups = expense_df.groupby('category')['amount'].sum()
             logger.debug("Expense groups:\n%s", expense_groups.to_string())
@@ -85,13 +114,38 @@ class ReportGenerator:
             total_uncategorized = uncategorized_df['amount'].sum()
             logger.debug(f"Total uncategorized: {total_uncategorized}")
             report.uncategorized_items.append(ReportLineItem('Uncategorized', total_uncategorized, 'uncategorized'))
-            
+
+        # Calculate disallowed expenses (verworpen uitgaven)
+        partial_categories = self._get_partially_deductible_categories()
+        for category_id, deductible_pct in partial_categories.items():
+            cat_df = df[df['category'] == category_id]
+            if not cat_df.empty:
+                total_amount = abs(cat_df['amount'].sum())  # Expenses are negative
+                deductible_amount = total_amount * Decimal(deductible_pct) / 100
+                disallowed_amount = total_amount - deductible_amount
+
+                cat_name = category_id
+                if category_id in self.categories:
+                    cat_name = self.categories[category_id].name
+
+                report.disallowed_expenses.append(DisallowedExpenseItem(
+                    category=cat_name,
+                    total_amount=total_amount,
+                    deductible_pct=deductible_pct,
+                    deductible_amount=deductible_amount,
+                    disallowed_amount=disallowed_amount
+                ))
+                logger.debug(f"Verworpen uitgave: {cat_name} - Total: {total_amount}, "
+                           f"Deductible: {deductible_pct}%, Disallowed: {disallowed_amount}")
+
         return report
 
     def export_to_excel(self, report: Report, output_path: Path) -> None:
         """
-        Exports the P&L report to a formatted Excel file.
+        Exports the P&L report to a formatted Excel file with transactions tab.
         """
+        from openpyxl.styles import PatternFill, Border, Side
+
         logger.info(f"Starting Excel export to {output_path}")
         wb = Workbook()
         ws = wb.active
@@ -100,15 +154,23 @@ class ReportGenerator:
         # Define styles
         bold_font = Font(bold=True)
         currency_format = '€ #,##0.00'
-        
+        header_fill = PatternFill(start_color="2c5282", end_color="2c5282", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
         # Title
-        ws.cell(row=1, column=1, value=f"Profit & Loss Report for {report.fiscal_year}").font = Font(size=16, bold=True)
+        ws.cell(row=1, column=1, value=f"Resultatenrekening {report.fiscal_year}").font = Font(size=16, bold=True)
         ws.merge_cells('A1:C1')
-        
+
         current_row = 3
         logger.debug("Writing income section...")
-        # Income
-        ws.cell(row=current_row, column=1, value="Baten (Income)").font = bold_font
+        # Income (Baten)
+        ws.cell(row=current_row, column=1, value="Baten").font = bold_font
         current_row += 1
         for item in report.income_items:
             ws.cell(row=current_row, column=1, value=f"  {item.category}")
@@ -120,29 +182,58 @@ class ReportGenerator:
                 cell = ws.cell(row=current_row, column=2, value=float(sub_item.amount))
                 cell.number_format = currency_format
                 current_row += 1
-        
+
         ws.cell(row=current_row, column=1, value="Totaal Baten").font = bold_font
         cell = ws.cell(row=current_row, column=2, value=float(report.total_income))
         cell.number_format = currency_format
         cell.font = bold_font
         current_row += 2
 
-        # Expenses
-        logger.debug("Writing expenses section...")
-        ws.cell(row=current_row, column=1, value="Kosten (Expenses)").font = bold_font
+        # Kosten (operational expenses - NOT depreciation)
+        logger.debug("Writing kosten section...")
+        ws.cell(row=current_row, column=1, value="Kosten").font = bold_font
         current_row += 1
-        all_expenses = sorted(report.expense_items + report.depreciation_items, key=lambda x: x.category)
-        for item in all_expenses:
-            ws.cell(row=current_row, column=1, value=f"  {item.category.capitalize()}")
+        total_kosten = Decimal(0)
+        for item in sorted(report.expense_items, key=lambda x: x.category):
+            ws.cell(row=current_row, column=1, value=f"  {item.category.replace('-', ' ').title()}")
             cell = ws.cell(row=current_row, column=2, value=float(-item.amount))
             cell.number_format = currency_format
+            total_kosten += -item.amount
             current_row += 1
 
         ws.cell(row=current_row, column=1, value="Totaal Kosten").font = bold_font
-        cell = ws.cell(row=current_row, column=2, value=float(-report.total_expenses))
+        cell = ws.cell(row=current_row, column=2, value=float(total_kosten))
         cell.number_format = currency_format
         cell.font = bold_font
         current_row += 2
+
+        # Afschrijvingen (Depreciation - separate from Kosten)
+        if report.depreciation_items:
+            logger.debug("Writing afschrijvingen section...")
+            ws.cell(row=current_row, column=1, value="Afschrijvingen").font = bold_font
+            current_row += 1
+
+            # Show asset details
+            total_afschrijvingen = Decimal(0)
+            from src.services.depreciation import get_depreciation_for_year
+            depreciation_entries = get_depreciation_for_year(self.assets, report.fiscal_year)
+            for entry in depreciation_entries:
+                asset_name = entry.asset_id
+                for asset in self.assets:
+                    if asset.id == entry.asset_id:
+                        asset_name = asset.name
+                        break
+                ws.cell(row=current_row, column=1, value=f"  {asset_name}")
+                cell = ws.cell(row=current_row, column=2, value=float(entry.amount))
+                cell.number_format = currency_format
+                total_afschrijvingen += entry.amount
+                current_row += 1
+
+            ws.cell(row=current_row, column=1, value="Totaal Afschrijvingen").font = bold_font
+            cell = ws.cell(row=current_row, column=2, value=float(total_afschrijvingen))
+            cell.number_format = currency_format
+            cell.font = bold_font
+            current_row += 2
 
         # Result
         logger.debug("Writing result section...")
@@ -152,14 +243,128 @@ class ReportGenerator:
         cell.font = bold_font
         current_row += 2
 
+        # Verworpen uitgaven (Disallowed Expenses)
+        if report.disallowed_expenses:
+            logger.debug("Writing verworpen uitgaven section...")
+            ws.cell(row=current_row, column=1, value="Verworpen Uitgaven (Disallowed Expenses)").font = bold_font
+            current_row += 1
+
+            # Header row for the table
+            ws.cell(row=current_row, column=1, value="Categorie")
+            ws.cell(row=current_row, column=2, value="Totaal bedrag")
+            ws.cell(row=current_row, column=3, value="% Aftrekbaar")
+            ws.cell(row=current_row, column=4, value="Aftrekbaar")
+            ws.cell(row=current_row, column=5, value="Verworpen")
+            for col in range(1, 6):
+                ws.cell(row=current_row, column=col).font = Font(italic=True)
+            current_row += 1
+
+            for item in sorted(report.disallowed_expenses, key=lambda x: x.category):
+                ws.cell(row=current_row, column=1, value=f"  {item.category}")
+                cell = ws.cell(row=current_row, column=2, value=float(item.total_amount))
+                cell.number_format = currency_format
+                ws.cell(row=current_row, column=3, value=f"{item.deductible_pct}%")
+                cell = ws.cell(row=current_row, column=4, value=float(item.deductible_amount))
+                cell.number_format = currency_format
+                cell = ws.cell(row=current_row, column=5, value=float(item.disallowed_amount))
+                cell.number_format = currency_format
+                current_row += 1
+
+            ws.cell(row=current_row, column=1, value="Totaal Verworpen Uitgaven").font = bold_font
+            cell = ws.cell(row=current_row, column=5, value=float(report.total_disallowed))
+            cell.number_format = currency_format
+            cell.font = bold_font
+            current_row += 2
+
         # Uncategorized warning
         if report.total_uncategorized != 0:
             logger.debug("Adding uncategorized warning.")
             ws.cell(row=current_row, column=1, value=f"Waarschuwing: {report.total_uncategorized:,.2f} aan niet-gecategoriseerde transacties (niet opgenomen in resultaat).").font = Font(color="FF0000")
+            current_row += 1
 
         # Adjust column widths
         ws.column_dimensions['A'].width = 40
         ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 15
+
+        # Create Transactions sheet
+        logger.debug("Creating transactions sheet...")
+        ws_tx = wb.create_sheet(title="Verrichtingen")
+
+        # Filter transactions for this fiscal year
+        year_transactions = [
+            t for t in self.transactions
+            if t.booking_date.year == report.fiscal_year and not t.is_excluded
+        ]
+        # Sort by date
+        year_transactions.sort(key=lambda t: t.booking_date)
+
+        # Headers - retain all columns from input
+        headers = [
+            'Rekening', 'Boekingsdatum', 'Valutadatum', 'Rekeninguittrekselnr', 'Transactienr',
+            'Tegenpartij', 'Rekening Tegenpartij', 'Straat en nummer', 'Postcode en plaats',
+            'BIC', 'Landcode', 'Omschrijving', 'Bedrag', 'Devies',
+            'Categorie', 'Therapeutisch', 'Bron'
+        ]
+        for col, header in enumerate(headers, 1):
+            cell = ws_tx.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center')
+
+        # Data rows
+        for row_num, tx in enumerate(year_transactions, 2):
+            ws_tx.cell(row=row_num, column=1, value=tx.own_account or '').border = thin_border
+            ws_tx.cell(row=row_num, column=2, value=tx.booking_date.strftime('%d/%m/%Y')).border = thin_border
+            ws_tx.cell(row=row_num, column=3, value=tx.value_date.strftime('%d/%m/%Y')).border = thin_border
+            ws_tx.cell(row=row_num, column=4, value=tx.statement_number or '').border = thin_border
+            ws_tx.cell(row=row_num, column=5, value=tx.transaction_number or '').border = thin_border
+            ws_tx.cell(row=row_num, column=6, value=tx.counterparty_name or '').border = thin_border
+            ws_tx.cell(row=row_num, column=7, value=tx.counterparty_iban or '').border = thin_border
+            ws_tx.cell(row=row_num, column=8, value=tx.counterparty_street or '').border = thin_border
+            ws_tx.cell(row=row_num, column=9, value=tx.counterparty_postal_city or '').border = thin_border
+            ws_tx.cell(row=row_num, column=10, value=tx.counterparty_bic or '').border = thin_border
+            ws_tx.cell(row=row_num, column=11, value=tx.counterparty_country or '').border = thin_border
+            ws_tx.cell(row=row_num, column=12, value=tx.description or '').border = thin_border
+
+            amount_cell = ws_tx.cell(row=row_num, column=13, value=float(tx.amount))
+            amount_cell.number_format = currency_format
+            amount_cell.border = thin_border
+
+            ws_tx.cell(row=row_num, column=14, value=tx.currency or 'EUR').border = thin_border
+            ws_tx.cell(row=row_num, column=15, value=tx.category or '').border = thin_border
+            ws_tx.cell(row=row_num, column=16, value='Ja' if tx.is_therapeutic else 'Nee').border = thin_border
+            ws_tx.cell(row=row_num, column=17, value=tx.source_file or '').border = thin_border
+
+        # Adjust column widths
+        ws_tx.column_dimensions['A'].width = 22  # Rekening
+        ws_tx.column_dimensions['B'].width = 12  # Boekingsdatum
+        ws_tx.column_dimensions['C'].width = 12  # Valutadatum
+        ws_tx.column_dimensions['D'].width = 18  # Rekeninguittrekselnr
+        ws_tx.column_dimensions['E'].width = 12  # Transactienr
+        ws_tx.column_dimensions['F'].width = 35  # Tegenpartij
+        ws_tx.column_dimensions['G'].width = 24  # Rekening Tegenpartij
+        ws_tx.column_dimensions['H'].width = 25  # Straat en nummer
+        ws_tx.column_dimensions['I'].width = 22  # Postcode en plaats
+        ws_tx.column_dimensions['J'].width = 12  # BIC
+        ws_tx.column_dimensions['K'].width = 10  # Landcode
+        ws_tx.column_dimensions['L'].width = 50  # Omschrijving
+        ws_tx.column_dimensions['M'].width = 14  # Bedrag
+        ws_tx.column_dimensions['N'].width = 8   # Devies
+        ws_tx.column_dimensions['O'].width = 25  # Categorie
+        ws_tx.column_dimensions['P'].width = 12  # Therapeutisch
+        ws_tx.column_dimensions['Q'].width = 25  # Bron
+
+        # Add autofilter
+        ws_tx.auto_filter.ref = f"A1:Q{len(year_transactions) + 1}"
+
+        # Freeze header row
+        ws_tx.freeze_panes = 'A2'
+
+        logger.info(f"Added {len(year_transactions)} transactions to Verrichtingen sheet")
 
         # Save workbook
         try:
@@ -174,41 +379,73 @@ class ReportGenerator:
         """
         Formats the P&L report for display in the console.
         """
+        from src.services.depreciation import get_depreciation_for_year
+
         lines = []
-        width = 50
+        width = 55
         lines.append("=" * width)
-        lines.append(f"   Profit & Loss Report for {report.fiscal_year}".center(width))
+        lines.append(f"   Resultatenrekening {report.fiscal_year}".center(width))
         lines.append("=" * width)
         lines.append("")
 
-        # Income
-        lines.append("Baten (Income)")
+        # Income (Baten)
+        lines.append("Baten")
         lines.append("-" * width)
         for item in report.income_items:
-            lines.append(f"  {item.category:<35} € {item.amount:10,.2f}")
+            lines.append(f"  {item.category:<40} € {item.amount:10,.2f}")
             for sub_item in item.sub_items:
-                lines.append(f"    - {sub_item.category:<31} € {sub_item.amount:10,.2f}")
+                lines.append(f"    - {sub_item.category:<36} € {sub_item.amount:10,.2f}")
         lines.append("-" * width)
-        lines.append(f"{'Totaal Baten':<37} € {report.total_income:10,.2f}")
+        lines.append(f"{'Totaal Baten':<42} € {report.total_income:10,.2f}")
         lines.append("")
 
-        # Expenses
-        lines.append("Kosten (Expenses)")
+        # Kosten (operational expenses - NOT depreciation)
+        lines.append("Kosten")
         lines.append("-" * width)
-        
-        all_expenses = sorted(report.expense_items + report.depreciation_items, key=lambda x: x.category)
-        for item in all_expenses:
-            lines.append(f"  {item.category.capitalize():<35} € {-item.amount:10,.2f}")
+        total_kosten = Decimal(0)
+        for item in sorted(report.expense_items, key=lambda x: x.category):
+            cat_name = item.category.replace('-', ' ').title()
+            lines.append(f"  {cat_name:<40} € {-item.amount:10,.2f}")
+            total_kosten += -item.amount
         lines.append("-" * width)
-        lines.append(f"{'Totaal Kosten':<37} € {-report.total_expenses:10,.2f}")
+        lines.append(f"{'Totaal Kosten':<42} € {total_kosten:10,.2f}")
         lines.append("")
+
+        # Afschrijvingen (Depreciation - separate from Kosten)
+        if report.depreciation_items:
+            lines.append("Afschrijvingen")
+            lines.append("-" * width)
+            depreciation_entries = get_depreciation_for_year(self.assets, report.fiscal_year)
+            total_afschrijvingen = Decimal(0)
+            for entry in depreciation_entries:
+                asset_name = entry.asset_id
+                for asset in self.assets:
+                    if asset.id == entry.asset_id:
+                        asset_name = asset.name
+                        break
+                lines.append(f"  {asset_name:<40} € {entry.amount:10,.2f}")
+                total_afschrijvingen += entry.amount
+            lines.append("-" * width)
+            lines.append(f"{'Totaal Afschrijvingen':<42} € {total_afschrijvingen:10,.2f}")
+            lines.append("")
 
         # Result
         lines.append("=" * width)
         profit_label = "Winst" if report.profit_loss >= 0 else "Verlies"
-        lines.append(f"Resultaat ({profit_label}){'':<20} € {report.profit_loss:10,.2f}")
+        lines.append(f"Resultaat ({profit_label}){'':<22} € {report.profit_loss:10,.2f}")
         lines.append("=" * width)
         lines.append("")
+
+        # Verworpen uitgaven
+        if report.disallowed_expenses:
+            lines.append("Verworpen Uitgaven (Disallowed Expenses)")
+            lines.append("-" * width)
+            for item in sorted(report.disallowed_expenses, key=lambda x: x.category):
+                lines.append(f"  {item.category:<25} € {item.total_amount:8,.2f} ({item.deductible_pct}% aftrekbaar)")
+                lines.append(f"    Verworpen: € {item.disallowed_amount:8,.2f}")
+            lines.append("-" * width)
+            lines.append(f"{'Totaal Verworpen':<37} € {report.total_disallowed:10,.2f}")
+            lines.append("")
 
         # Uncategorized warning
         if report.total_uncategorized != 0:
