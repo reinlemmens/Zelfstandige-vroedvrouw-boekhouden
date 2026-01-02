@@ -56,3 +56,14 @@ htmlcov/
 
 # Output data (generated)
 data/output/
+
+# Codex/LLM tooling
+.codex/
+.claude/
+.gemini/
+
+# Office temp files
+~$*.xlsx
+
+# Local exports/scratch files
+test_report.xlsx

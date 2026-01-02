@@ -57,13 +57,13 @@ This is a data processing task executed within Claude Code using MCP tools. Impl
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Read all CSV files matching pattern `BE*.csv` from data/2025/
-- [ ] T009 [US1] Parse CSV headers and map to Transaction fields per data-model.md
-- [ ] T010 [US1] Extract transactions from first CSV file (BE05 0636 4778 9475 - Vroedvrouw Goedele)
-- [ ] T011 [P] [US1] Extract transactions from second account CSV (BE05 0682 4812 1175)
-- [ ] T012 [US1] Add source_file tracking to each transaction
-- [ ] T013 [US1] Generate dedup_key for each transaction (account|date|txn_num|ref)
-- [ ] T014 [US1] Verify transaction count and sample amounts against source files
+- [x] T008 [US1] Read all CSV files matching pattern `BE*.csv` from data/2025/
+- [x] T009 [US1] Parse CSV headers and map to Transaction fields per data-model.md
+- [x] T010 [US1] Extract transactions from first CSV file (BE05 0636 4778 9475 - Vroedvrouw Goedele)
+- [x] T011 [P] [US1] Extract transactions from second account CSV (BE05 0682 4812 1175)
+- [x] T012 [US1] Add source_file tracking to each transaction
+- [x] T013 [US1] Generate dedup_key for each transaction (account|date|txn_num|ref)
+- [x] T014 [US1] Verify transaction count and sample amounts against source files
 
 **Checkpoint**: All CSV transactions imported with source tracking
 
@@ -77,13 +77,13 @@ This is a data processing task executed within Claude Code using MCP tools. Impl
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Read all PDF files from data/2025/ (pattern: 6287522061_*.pdf)
-- [ ] T016 [US2] Extract statement metadata from first PDF (period dates, settlement date, total)
-- [ ] T017 [US2] Extract transaction table from first PDF (date, merchant, location, amount)
-- [ ] T018 [P] [US2] Parse remaining PDF statements (repeat T016-T017 pattern)
-- [ ] T019 [US2] Handle credit (+) and debit (-) transaction signs correctly
-- [ ] T020 [US2] Set transaction type to 'mastercard_detail' for PDF transactions
-- [ ] T021 [US2] Verify PDF transaction totals match statement totals
+- [x] T015 [US2] Read all PDF files from data/2025/ (pattern: 6287522061_*.pdf)
+- [x] T016 [US2] Extract statement metadata from first PDF (period dates, settlement date, total)
+- [x] T017 [US2] Extract transaction table from first PDF (date, merchant, location, amount)
+- [x] T018 [P] [US2] Parse remaining PDF statements (repeat T016-T017 pattern)
+- [x] T019 [US2] Handle credit (+) and debit (-) transaction signs correctly
+- [x] T020 [US2] Set transaction type to 'mastercard_detail' for PDF transactions
+- [x] T021 [US2] Verify PDF transaction totals match statement totals
 
 **Checkpoint**: All Mastercard transactions imported from PDFs
 

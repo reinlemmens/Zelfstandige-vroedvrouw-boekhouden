@@ -105,12 +105,12 @@
 
 ### Implementation for User Story 2
 
-- [ ] T030 [P] [US2] Implement Mastercard PDF parser in `src/services/pdf_importer.py` using pdfplumber
-- [ ] T031 [US2] Extract transaction table from PDF pages in `src/services/pdf_importer.py`
-- [ ] T032 [US2] Parse transaction rows: date, description, amount (including refunds with + suffix) in `src/services/pdf_importer.py`
-- [ ] T033 [US2] Generate unique transaction IDs for PDF transactions (MC-{statement}-{sequence}) in `src/services/pdf_importer.py`
-- [ ] T034 [US2] Add PDF file support to `plv import` command in `src/cli/main.py`
-- [ ] T035 [US2] Implement duplicate detection for Mastercard transactions in `src/services/pdf_importer.py`
+- [x] T030 [P] [US2] Implement Mastercard PDF parser in `src/services/pdf_importer.py` using pdfplumber
+- [x] T031 [US2] Extract transaction table from PDF pages in `src/services/pdf_importer.py`
+- [x] T032 [US2] Parse transaction rows: date, description, amount (including refunds with + suffix) in `src/services/pdf_importer.py`
+- [x] T033 [US2] Generate unique transaction IDs for PDF transactions (MC-{statement}-{sequence}) in `src/services/pdf_importer.py`
+- [x] T034 [US2] Add PDF file support to `plv import` command in `src/cli/main.py`
+- [x] T035 [US2] Implement duplicate detection for Mastercard transactions in `src/services/pdf_importer.py`
 
 **Checkpoint**: Mastercard PDF import working - can import all credit card statements
 
@@ -124,14 +124,14 @@
 
 ### Implementation for User Story 4
 
-- [ ] T036 [P] [US4] Implement `plv rules list` subcommand in `src/cli/main.py` with --category and --format options
-- [ ] T037 [P] [US4] Implement `plv rules add` subcommand in `src/cli/main.py` with --pattern, --category, --type, --field, --priority, --therapeutic options
-- [ ] T038 [US4] Implement `plv rules disable` subcommand in `src/cli/main.py`
-- [ ] T039 [US4] Implement `plv rules test` subcommand in `src/cli/main.py` to preview pattern matches without saving
-- [ ] T040 [US4] Add rule validation (valid category, valid regex if pattern_type=regex) in `src/services/persistence.py`
-- [ ] T041 [US4] Implement rule extraction from Excel in `src/services/rule_extractor.py` using frequency-based pattern mining from research.md
-- [ ] T042 [US4] Implement `plv bootstrap` command in `src/cli/main.py` with --sheet, --min-occurrences, --output, --dry-run, --merge options
-- [ ] T043 [US4] Add ambiguous pattern detection (same counterparty, different categories) in `src/services/rule_extractor.py`
+- [x] T036 [P] [US4] Implement `plv rules list` subcommand in `src/cli/main.py` with --category and --format options
+- [x] T037 [P] [US4] Implement `plv rules add` subcommand in `src/cli/main.py` with --pattern, --category, --type, --field, --priority, --therapeutic options
+- [x] T038 [US4] Implement `plv rules disable` subcommand in `src/cli/main.py`
+- [x] T039 [US4] Implement `plv rules test` subcommand in `src/cli/main.py` to preview pattern matches without saving
+- [x] T040 [US4] Add rule validation (valid category, valid regex if pattern_type=regex) in `src/services/persistence.py`
+- [x] T041 [US4] Implement rule extraction from Excel in `src/services/rule_extractor.py` using frequency-based pattern mining from research.md
+- [x] T042 [US4] Implement `plv bootstrap` command in `src/cli/main.py` with --sheet, --min-occurrences, --output, --dry-run, --merge options
+- [x] T043 [US4] Add ambiguous pattern detection (same counterparty, different categories) in `src/services/rule_extractor.py`
 
 **Checkpoint**: Rule management working - can add, list, test, and bootstrap rules
 
@@ -145,13 +145,13 @@
 
 ### Implementation for User Story 5
 
-- [ ] T044 [P] [US5] Implement `plv list` command in `src/cli/main.py` with --year, --category, --uncategorized, --from, --to, --format, --limit options
-- [ ] T045 [US5] Add table formatter for transaction list output in `src/cli/main.py`
-- [ ] T046 [US5] Add CSV and JSON output formats for `plv list` in `src/cli/main.py`
-- [ ] T047 [US5] Implement `plv assign` command in `src/cli/main.py` with transaction-id, category arguments
-- [ ] T048 [US5] Set is_manual_override=true when manually assigning category in `src/services/persistence.py`
-- [ ] T049 [US5] Add --note option to `plv assign` for documenting override reason in `src/cli/main.py`
-- [ ] T050 [US5] Implement `plv categories` command in `src/cli/main.py` to list available categories
+- [x] T044 [P] [US5] Implement `plv list` command in `src/cli/main.py` with --year, --category, --uncategorized, --from, --to, --format, --limit options
+- [x] T045 [US5] Add table formatter for transaction list output in `src/cli/main.py`
+- [x] T046 [US5] Add CSV and JSON output formats for `plv list` in `src/cli/main.py`
+- [x] T047 [US5] Implement `plv assign` command in `src/cli/main.py` with transaction-id, category arguments
+- [x] T048 [US5] Set is_manual_override=true when manually assigning category in `src/services/persistence.py`
+- [x] T049 [US5] Add --note option to `plv assign` for documenting override reason in `src/cli/main.py`
+- [x] T050 [US5] Implement `plv categories` command in `src/cli/main.py` to list available categories
 
 **Checkpoint**: Review workflow working - can list, filter, and manually categorize transactions
 
@@ -165,10 +165,10 @@
 
 ### Implementation for User Story 6
 
-- [ ] T051 [US6] Add --therapeutic flag to `plv assign` command (only valid for omzet category) in `src/cli/main.py`
-- [ ] T052 [US6] Add therapeutic flag validation in `src/services/persistence.py` (only omzet transactions can be therapeutic)
-- [ ] T053 [US6] Add --therapeutic filter to `plv list` command in `src/cli/main.py`
-- [ ] T054 [US6] Add is_therapeutic support to rule matching (rules can auto-set therapeutic flag) in `src/services/categorizer.py`
+- [x] T051 [US6] Add --therapeutic flag to `plv assign` command (only valid for omzet category) in `src/cli/main.py`
+- [x] T052 [US6] Add therapeutic flag validation in `src/services/persistence.py` (only omzet transactions can be therapeutic)
+- [x] T053 [US6] Add --therapeutic filter to `plv list` command in `src/cli/main.py`
+- [x] T054 [US6] Add is_therapeutic support to rule matching (rules can auto-set therapeutic flag) in `src/services/categorizer.py`
 
 **Checkpoint**: Therapeutic marking working - can flag and filter therapeutic revenue
 

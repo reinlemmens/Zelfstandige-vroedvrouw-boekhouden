@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from src.models.asset import Asset
 from src.models.category import Category
 from src.models.rule import CategoryRule
 from src.models.transaction import Transaction
@@ -43,6 +44,11 @@ class PersistenceService:
     def transactions_file(self) -> Path:
         """Path to transactions JSON file."""
         return self.data_dir / "transactions.json"
+
+    @property
+    def assets_file(self) -> Path:
+        """Path to assets JSON file."""
+        return self.data_dir / "assets.json"
 
     # -------------------------------------------------------------------------
     # Categories
@@ -241,6 +247,73 @@ class PersistenceService:
         """
         transactions = self.load_transactions()
         return {tx.id for tx in transactions}
+
+    # -------------------------------------------------------------------------
+    # Assets
+    # -------------------------------------------------------------------------
+
+    def load_assets(self) -> List[Asset]:
+        """Load assets from JSON file.
+
+        Returns:
+            List of Asset objects
+        """
+        if not self.assets_file.exists():
+            logger.info(f"No assets file found: {self.assets_file}")
+            return []
+
+        with open(self.assets_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Check schema version for future compatibility
+        version = data.get('version', '1.0')
+        if version != '1.0':
+            logger.warning(f"Assets file version {version} may not be fully compatible")
+
+        assets = []
+        for asset_data in data.get('assets', []):
+            try:
+                asset = Asset.from_dict(asset_data)
+                assets.append(asset)
+            except Exception as e:
+                logger.error(f"Error loading asset {asset_data.get('id', 'unknown')}: {e}")
+
+        logger.info(f"Loaded {len(assets)} assets")
+        return assets
+
+    def save_assets(self, assets: List[Asset]) -> None:
+        """Save assets to JSON file.
+
+        Args:
+            assets: List of Asset objects to save
+        """
+        data = {
+            'version': '1.0',
+            'exported_at': datetime.now().isoformat(),
+            'assets': [asset.to_dict() for asset in assets],
+        }
+
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
+        with open(self.assets_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved {len(assets)} assets to {self.assets_file}")
+
+    def get_asset_by_id(self, asset_id: str) -> Optional[Asset]:
+        """Find an asset by its ID.
+
+        Args:
+            asset_id: The asset ID to find
+
+        Returns:
+            Asset if found, None otherwise
+        """
+        assets = self.load_assets()
+        for asset in assets:
+            if asset.id == asset_id:
+                return asset
+        return None
 
     # -------------------------------------------------------------------------
     # Settings
