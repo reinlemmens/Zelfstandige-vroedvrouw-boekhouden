@@ -2,6 +2,7 @@
 
 **Feature**: 002-transaction-categorization
 **Date**: 2026-01-02
+**Updated**: 2026-01-03 (Maatschap support)
 
 ## Prerequisites
 
@@ -92,6 +93,74 @@ Create rules for recurring vendors:
 plv rules add --pattern "NEW VENDOR" --category klein-materiaal
 ```
 
+## Maatschap (Partnership) Accounts
+
+For Maatschap accounts like "Huis van Meraki", transactions between partners require special categorization based on the description field rather than the counterparty name.
+
+### 1. Configure Maatschap Account
+
+Create or update `config/accounts.yaml`:
+
+```yaml
+version: "1.0"
+accounts:
+  - id: goedele
+    name: "Vroedvrouw Goedele"
+    iban: "BE05 0636 4778 9475"
+    account_type: standard
+
+  - id: meraki
+    name: "Huis van Meraki"
+    iban: "BE98 0689 5286 6793"
+    account_type: maatschap
+    partners:
+      - name: "Vroedvrouw Goedele Deseyn"
+        iban: "BE05 0636 4778 9475"
+      - name: "HUIS VAN MERAKI - LEILA RCHAIDIA BV"
+        iban: "BE27 7370 6541 0173"
+```
+
+### 2. Import Maatschap Transactions
+
+```bash
+plv import data/meraki/bank/*.csv --year 2025 --account meraki
+```
+
+### 3. Categorization Priority
+
+For Maatschap accounts, description-based rules are applied first:
+
+| Description Contains | Category | Example |
+|---------------------|----------|---------|
+| "Inkomstenverdeling" | `winstverdeling` | Profit distribution to partners |
+| "Verkeerde rekening" | `verkeerde-rekening` | Wrong account correction |
+| "Google workspace" | `licenties-software` | Software cost reimbursement |
+| "Q1", "Q2", "Q3", "Q4" | `contractors` | Partner work payment |
+| Invoice number (20XXYYZZZ) | `contractors` | Partner work payment |
+
+### 4. Example Transactions
+
+```
+Transaction: -10347.50 EUR to "Vroedvrouw Goedele Deseyn"
+Description: "Inkomstenverdeling 2025 Maatschap huis van Meraki"
+→ Category: winstverdeling (profit distribution)
+
+Transaction: -1050.00 EUR to "Vroedvrouw Goedele Deseyn"
+Description: "Q3 maatschap"
+→ Category: contractors (work payment)
+
+Transaction: -125.00 EUR to "HUIS VAN MERAKI - LEILA RCHAIDIA BV"
+Description: "Google workspace 2024-2025"
+→ Category: licenties-software (cost reimbursement)
+```
+
+### 5. Difference: Loon vs Contractors
+
+- **Loon**: Payments to private persons (natural persons) for work done
+- **Contractors**: Payments for work to companies (BVs) or independent entities
+
+Partner work payments in a Maatschap use `contractors` because partners typically bill through their BV or as independents.
+
 ## File Locations
 
 | Purpose | Location |
@@ -100,6 +169,7 @@ plv rules add --pattern "NEW VENDOR" --category klein-materiaal
 | Input: Mastercard PDF | `data/2025/mastercard/*.pdf` |
 | Config: Categories | `config/categories.yaml` |
 | Config: Rules | `config/rules.yaml` |
+| Config: Accounts | `config/accounts.yaml` |
 | Output: Transactions | `data/output/transactions.json` |
 
 ## Common Tasks

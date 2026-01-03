@@ -26,9 +26,28 @@ class Context:
         self.verbose: bool = False
         self.quiet: bool = False
         self.json_output: bool = False
+        self.company: Optional[str] = None
         self.config_path: str = "config/settings.yaml"
         self.data_dir: str = "data/output"
+        self.rules_file: str = "config/rules.yaml"
+        self.categories_file: str = "config/categories.yaml"
         self.persistence: Optional[PersistenceService] = None
+
+    def set_company(self, company: str):
+        """Configure paths for a specific company."""
+        self.company = company
+        company_dir = Path(f"data/{company}")
+
+        if not company_dir.exists():
+            raise click.ClickException(f"Company directory not found: {company_dir}")
+
+        self.data_dir = str(company_dir / "output")
+        self.config_path = str(company_dir / "config" / "settings.yaml")
+        self.rules_file = str(company_dir / "config" / "rules.yaml")
+        self.categories_file = str(company_dir / "config" / "categories.yaml")
+
+        # Create output directory if it doesn't exist
+        Path(self.data_dir).mkdir(parents=True, exist_ok=True)
 
     def get_persistence(self) -> PersistenceService:
         """Get or create persistence service."""
@@ -40,10 +59,20 @@ class Context:
                 with open(settings_path, 'r') as f:
                     settings = yaml.safe_load(f) or {}
 
+            # When --company is used, use company paths directly (don't let settings.yaml override)
+            if self.company:
+                data_dir = self.data_dir
+                rules_file = self.rules_file
+                categories_file = self.categories_file
+            else:
+                data_dir = settings.get('data_dir', self.data_dir)
+                rules_file = settings.get('rules_file', self.rules_file)
+                categories_file = settings.get('categories_file', self.categories_file)
+
             self.persistence = PersistenceService(
-                data_dir=settings.get('data_dir', self.data_dir),
-                rules_file=settings.get('rules_file', 'config/rules.yaml'),
-                categories_file=settings.get('categories_file', 'config/categories.yaml'),
+                data_dir=data_dir,
+                rules_file=rules_file,
+                categories_file=categories_file,
             )
         return self.persistence
 
@@ -55,20 +84,32 @@ pass_context = click.make_pass_decorator(Context, ensure=True)
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose output')
 @click.option('-q', '--quiet', is_flag=True, help='Suppress non-error output')
 @click.option('-j', '--json', 'json_output', is_flag=True, help='Output as JSON')
-@click.option('--config', 'config_path', default='config/settings.yaml', help='Config file path')
-@click.option('--data-dir', default='data/output', help='Data directory path')
+@click.option('-c', '--company', default=None, help='Company name (e.g., goedele). Uses data/<company>/ structure')
+@click.option('--config', 'config_path', default=None, help='Config file path (overrides --company)')
+@click.option('--data-dir', default=None, help='Data directory path (overrides --company)')
 @click.version_option(version=__version__, prog_name='plv')
 @pass_context
-def cli(ctx: Context, verbose: bool, quiet: bool, json_output: bool, config_path: str, data_dir: str):
+def cli(ctx: Context, verbose: bool, quiet: bool, json_output: bool, company: Optional[str],
+        config_path: Optional[str], data_dir: Optional[str]):
     """PLV - P&L tool for Belgian midwife tax filing.
 
     Import, categorize, and manage financial transactions for tax preparation.
+
+    Use --company to select a company: plv --company goedele import ...
     """
     ctx.verbose = verbose
     ctx.quiet = quiet
     ctx.json_output = json_output
-    ctx.config_path = config_path
-    ctx.data_dir = data_dir
+
+    # Set up company paths if specified
+    if company:
+        ctx.set_company(company)
+
+    # Allow explicit overrides
+    if config_path:
+        ctx.config_path = config_path
+    if data_dir:
+        ctx.data_dir = data_dir
 
     # Adjust logging level
     if verbose:
@@ -179,7 +220,11 @@ def import_cmd(ctx: Context, files: tuple, year: Optional[int], dry_run: bool, f
 @click.option('-n', '--dry-run', is_flag=True, help='Preview without saving')
 @pass_context
 def categorize(ctx: Context, year: Optional[int], all_transactions: bool, dry_run: bool):
-    """Apply categorization rules to transactions."""
+    """Apply categorization rules to transactions.
+
+    For Maatschap (partnership) accounts, description-based rules are applied first
+    before counterparty rules. Configure Maatschap accounts in config/accounts.yaml.
+    """
     import json
     from src.services.categorizer import categorize_transactions
 
@@ -203,11 +248,13 @@ def categorize(ctx: Context, year: Optional[int], all_transactions: bool, dry_ru
             click.echo("No categorization rules found. Use 'plv bootstrap' to extract rules from Excel.")
         return
 
-    # Categorize transactions
+    # Categorize transactions with account-type awareness
+    # The get_account_type_by_iban function enables two-phase matching for Maatschap accounts
     transactions, stats = categorize_transactions(
         transactions,
         rules,
         force=all_transactions,
+        get_account_type=persistence.get_account_type_by_iban,
     )
 
     # Count current categorization status
@@ -226,6 +273,8 @@ def categorize(ctx: Context, year: Optional[int], all_transactions: bool, dry_ru
             'rules_applied': stats['rules_applied'],
             'total_categorized': already_categorized,
             'total_transactions': total_non_excluded,
+            'maatschap_transactions': stats.get('maatschap_transactions', 0),
+            'standard_transactions': stats.get('standard_transactions', 0),
             'dry_run': dry_run,
         }
         click.echo(json.dumps(result, indent=2))
@@ -233,6 +282,13 @@ def categorize(ctx: Context, year: Optional[int], all_transactions: bool, dry_ru
         if not ctx.quiet:
             click.echo(f"Categorized: {stats['categorized']} (total: {already_categorized}/{total_non_excluded})")
             click.echo(f"Uncategorized: {stats['uncategorized']}")
+
+            # Show Maatschap statistics if any Maatschap transactions were processed
+            maatschap_count = stats.get('maatschap_transactions', 0)
+            standard_count = stats.get('standard_transactions', 0)
+            if maatschap_count > 0:
+                click.echo(f"Account types: {maatschap_count} Maatschap, {standard_count} standard")
+
             if stats['rules_applied']:
                 click.echo("Rules applied:")
                 for rule_id, count in sorted(stats['rules_applied'].items(), key=lambda x: -x[1])[:10]:
@@ -903,35 +959,38 @@ def assets_dispose(ctx: Context, asset_id: str, disposal_date: str, notes: Optio
 @cli.command('report')
 @click.option('-y', '--year', type=int, default=None, help='Fiscal year (default: current)')
 @click.option('-o', '--output', 'output_path', default=None, help='Output file path for Excel export')
+@click.option('--pdf', 'pdf_path', default=None, help='Generate PDF management report')
 @pass_context
-def report_cmd(ctx: Context, year: Optional[int], output_path: Optional[str]):
+def report_cmd(ctx: Context, year: Optional[int], output_path: Optional[str], pdf_path: Optional[str]):
     """Generate a Profit & Loss report."""
     from src.services.report_generator import ReportGenerator
-    
+
     if year is None:
         year = datetime.now().year
 
     persistence = ctx.get_persistence()
     transactions = persistence.load_transactions() # Load all transactions
     assets = persistence.load_assets()
+    categories = persistence.load_categories()
 
-    generator = ReportGenerator(transactions, assets)
+    generator = ReportGenerator(transactions, assets, categories)
     report = generator.generate_pnl_report(fiscal_year=year)
+
+    # Generate timestamp for output files
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     if output_path:
         final_path = Path(output_path)
         if final_path.suffix.lower() not in ('.xlsx', '.xls'):
             click.echo("Error: Output file must have an .xlsx or .xls extension for Excel export.")
             sys.exit(1)
-            
-        if final_path.exists():
-            i = 1
-            stem = final_path.stem
-            suffix = final_path.suffix
-            while final_path.exists():
-                final_path = final_path.with_name(f"{stem}-{i}{suffix}")
-                i += 1
-        
+
+        # Add timestamp to filename: PL_2025.xlsx -> PL_2025_20260102_091523.xlsx
+        stem = final_path.stem
+        suffix = final_path.suffix
+        parent = final_path.parent
+        final_path = parent / f"{stem}_{timestamp}{suffix}"
+
         try:
             generator.export_to_excel(report, final_path)
             if not ctx.quiet:
@@ -939,7 +998,30 @@ def report_cmd(ctx: Context, year: Optional[int], output_path: Optional[str]):
         except Exception as e:
             click.echo(f"Error exporting to Excel: {e}", err=True)
             sys.exit(1)
-    else:
+
+    if pdf_path:
+        from src.services.pdf_report_generator import generate_management_report
+
+        final_pdf_path = Path(pdf_path)
+        if final_pdf_path.suffix.lower() != '.pdf':
+            click.echo("Error: PDF output file must have a .pdf extension.")
+            sys.exit(1)
+
+        # Add timestamp to filename: Jaarverslag_2025.pdf -> Jaarverslag_2025_20260102_091523.pdf
+        stem = final_pdf_path.stem
+        suffix = final_pdf_path.suffix
+        parent = final_pdf_path.parent
+        final_pdf_path = parent / f"{stem}_{timestamp}{suffix}"
+
+        try:
+            generate_management_report(transactions, report, final_pdf_path, assets, ctx.company)
+            if not ctx.quiet:
+                click.echo(f"PDF management report exported to {final_pdf_path}")
+        except Exception as e:
+            click.echo(f"Error generating PDF report: {e}", err=True)
+            sys.exit(1)
+
+    if not output_path and not pdf_path:
         # Display in console
         console_output = generator.format_for_console(report)
         click.echo(console_output)
@@ -981,6 +1063,114 @@ def export(ctx: Context, year: Optional[int], output_path: str, file_format: Opt
         click.echo(f"Error exporting transactions: {e}")
         sys.exit(1)
 
+
+
+@cli.group()
+def company():
+    """Manage company configurations."""
+    pass
+
+
+@company.command('list')
+def company_list():
+    """List all configured companies."""
+    data_dir = Path("data")
+    if not data_dir.exists():
+        click.echo("No data directory found")
+        return
+
+    companies = []
+    for item in data_dir.iterdir():
+        if item.is_dir() and (item / "config").exists():
+            companies.append(item.name)
+
+    if not companies:
+        click.echo("No companies configured. Use 'plv company init <name>' to create one.")
+        return
+
+    click.echo("Available companies:")
+    for company_name in sorted(companies):
+        company_dir = data_dir / company_name
+        input_dir = company_dir / "input"
+        output_dir = company_dir / "output"
+
+        # Count transactions if output exists
+        tx_file = output_dir / "transactions.json"
+        tx_count = 0
+        if tx_file.exists():
+            import json
+            with open(tx_file) as f:
+                data = json.load(f)
+                tx_count = len(data.get('transactions', []))
+
+        # Count input years
+        years = []
+        if input_dir.exists():
+            years = sorted([d.name for d in input_dir.iterdir() if d.is_dir() and d.name.isdigit()])
+
+        years_str = ", ".join(years) if years else "none"
+        click.echo(f"  {company_name:<15} years: {years_str:<20} transactions: {tx_count}")
+
+
+@company.command('init')
+@click.argument('name')
+@click.option('--copy-from', default=None, help='Copy config from existing company')
+def company_init(name: str, copy_from: Optional[str]):
+    """Initialize a new company structure."""
+    import shutil
+
+    company_dir = Path(f"data/{name}")
+
+    if company_dir.exists():
+        click.echo(f"Error: Company directory already exists: {company_dir}")
+        sys.exit(1)
+
+    # Create directory structure
+    (company_dir / "input" / "2025").mkdir(parents=True)
+    (company_dir / "output").mkdir(parents=True)
+    (company_dir / "config").mkdir(parents=True)
+
+    # Copy or create config files
+    if copy_from:
+        source_config = Path(f"data/{copy_from}/config")
+        if not source_config.exists():
+            click.echo(f"Error: Source company config not found: {source_config}")
+            sys.exit(1)
+
+        # Copy categories (shared structure)
+        if (source_config / "categories.yaml").exists():
+            shutil.copy(source_config / "categories.yaml", company_dir / "config" / "categories.yaml")
+
+        # Copy settings
+        if (source_config / "settings.yaml").exists():
+            shutil.copy(source_config / "settings.yaml", company_dir / "config" / "settings.yaml")
+
+        # Create empty rules file (don't copy - rules are company-specific)
+        with open(company_dir / "config" / "rules.yaml", 'w') as f:
+            f.write("rules: []\n")
+
+        click.echo(f"Created company '{name}' with config from '{copy_from}'")
+        click.echo(f"Note: rules.yaml is empty - use 'plv --company {name} bootstrap' to extract rules")
+    else:
+        # Copy from root config as template
+        root_config = Path("config")
+        if (root_config / "categories.yaml").exists():
+            shutil.copy(root_config / "categories.yaml", company_dir / "config" / "categories.yaml")
+        if (root_config / "settings.yaml").exists():
+            shutil.copy(root_config / "settings.yaml", company_dir / "config" / "settings.yaml")
+
+        # Create empty rules file
+        with open(company_dir / "config" / "rules.yaml", 'w') as f:
+            f.write("rules: []\n")
+
+        click.echo(f"Created company '{name}'")
+
+    click.echo(f"\nStructure created:")
+    click.echo(f"  {company_dir}/")
+    click.echo(f"  ├── input/2025/     <- Put CSV and PDF bank statements here")
+    click.echo(f"  ├── output/         <- Reports and transactions.json")
+    click.echo(f"  └── config/         <- rules.yaml, categories.yaml, settings.yaml")
+    click.echo(f"\nUsage: plv --company {name} import input/2025/*.csv")
 
 
 def main():

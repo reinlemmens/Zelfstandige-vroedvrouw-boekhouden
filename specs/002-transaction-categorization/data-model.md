@@ -2,6 +2,7 @@
 
 **Feature**: 002-transaction-categorization
 **Date**: 2026-01-02
+**Updated**: 2026-01-03 (Maatschap Enhancement)
 
 ## Entities
 
@@ -50,36 +51,38 @@ Predefined expense/income category for Belgian tax filing.
 | tax_deductible | boolean | Yes | Whether expense is tax-deductible |
 | description | string | No | Help text for user |
 
-**Predefined Categories** (26 total):
+**Predefined Categories** (28 total):
 
-| ID | Name | Type |
-|----|------|------|
-| omzet | Omzet | income |
-| admin-kosten | Admin kosten | expense |
-| bankkosten | Bankkosten | expense |
-| boeken-en-tijdschriften | Boeken en tijdschriften | expense |
-| bureelbenodigdheden | Bureelbenodigdheden | expense |
-| drukwerk-en-publiciteit | Drukwerk en publiciteit | expense |
-| huur-onroerend-goed | Huur onroerend goed | expense |
-| interne-storting | Interne storting | expense |
-| investeringen-over-3-jaar | Investeringen over 3 jaar | expense |
-| klein-materiaal | Klein materiaal | expense |
-| kosten-opleiding-en-vorming | Kosten opleiding en vorming | expense |
-| licenties-software | Licenties software | expense |
-| loon | Loon | expense |
-| maatschap-huis-van-meraki | Maatschap Huis van Meraki | expense |
-| medisch-materiaal | Medisch materiaal | expense |
-| onthaal | Onthaal | expense |
-| relatiegeschenken | Relatiegeschenken | expense |
-| restaurant | Restaurant | expense |
-| sociale-bijdragen | Sociale bijdragen | expense |
-| telefonie | Telefonie | expense |
-| verkeerde-rekening | Verkeerde rekening | expense |
-| verzekering-beroepsaansprakelijkheid | Verzekering beroepsaansprakelijkheid | expense |
-| vapz | Vrij Aanvullend Pensioen Zelfstandigen | expense |
-| vervoer | Vervoer | expense |
-| mastercard | Mastercard | expense |
-| sponsoring | Sponsoring | expense |
+| ID | Name | Type | Notes |
+|----|------|------|-------|
+| omzet | Omzet | income | |
+| admin-kosten | Admin kosten | expense | |
+| bankkosten | Bankkosten | expense | |
+| boeken-en-tijdschriften | Boeken en tijdschriften | expense | |
+| bureelbenodigdheden | Bureelbenodigdheden | expense | |
+| contractors | Contractors | expense | Payments for work to companies/independent entities (incl. Maatschap partners) |
+| drukwerk-en-publiciteit | Drukwerk en publiciteit | expense | |
+| huur-onroerend-goed | Huur onroerend goed | expense | |
+| interne-storting | Interne storting | expense | |
+| investeringen-over-3-jaar | Investeringen over 3 jaar | expense | |
+| klein-materiaal | Klein materiaal | expense | |
+| kosten-opleiding-en-vorming | Kosten opleiding en vorming | expense | |
+| licenties-software | Licenties software | expense | |
+| loon | Loon | expense | Payments to private persons only |
+| maatschap-huis-van-meraki | Maatschap Huis van Meraki | expense | |
+| medisch-materiaal | Medisch materiaal | expense | |
+| onthaal | Onthaal | expense | |
+| relatiegeschenken | Relatiegeschenken | expense | |
+| restaurant | Restaurant | expense | |
+| sociale-bijdragen | Sociale bijdragen | expense | |
+| telefonie | Telefonie | expense | |
+| verkeerde-rekening | Verkeerde rekening | expense | |
+| verzekering-beroepsaansprakelijkheid | Verzekering beroepsaansprakelijkheid | expense | |
+| vapz | Vrij Aanvullend Pensioen Zelfstandigen | expense | |
+| vervoer | Vervoer | expense | |
+| mastercard | Mastercard | expense | |
+| sponsoring | Sponsoring | expense | |
+| winstverdeling | Winstverdeling | expense | Profit distribution to Maatschap partners |
 
 ### CategoryRule
 
@@ -128,15 +131,49 @@ Records an error during import.
 | message | string | Yes | Error description |
 | raw_data | string | No | Original data that caused error |
 
+### Account
+
+Configuration for a bank account, including Maatschap-specific settings.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | string | Yes | Unique identifier (slug form, e.g., "goedele", "meraki") |
+| name | string | Yes | Display name (e.g., "Vroedvrouw Goedele") |
+| iban | string | Yes | IBAN (e.g., "BE05 0636 4778 9475") |
+| account_type | enum | Yes | `standard` or `maatschap` |
+| partners | list[Partner] | No | Partner list (required for Maatschap accounts) |
+
+**Validation Rules**:
+- `account_type` must be "standard" or "maatschap"
+- If `account_type` = "maatschap", `partners` must have at least 2 entries
+- `iban` must be a valid Belgian IBAN format
+
+### Partner
+
+Represents a partner in a Maatschap.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| name | string | Yes | Partner name (individual or BV) |
+| iban | string | Yes | Partner's bank account IBAN |
+
+**Notes**:
+- Partners may be individuals (e.g., "Vroedvrouw Goedele Deseyn") or BVs (e.g., "HUIS VAN MERAKI - LEILA RCHAIDIA BV")
+- Partner IBAN is used to identify incoming/outgoing payments between Maatschap and partners
+
 ## Relationships
 
 ```
 Transaction
     └── Category (many-to-one, via category field)
     └── CategoryRule (many-to-one, via matched_rule_id, nullable)
+    └── Account (many-to-one, via source IBAN matching)
 
 CategoryRule
     └── Category (many-to-one, via target_category)
+
+Account
+    └── Partner (one-to-many, for Maatschap accounts)
 ```
 
 ## State Transitions
@@ -170,9 +207,11 @@ Transactions matching Mastercard settlement patterns are marked `is_excluded` = 
 | Entity | Expected Volume | Growth Rate |
 |--------|-----------------|-------------|
 | Transaction | 500-1000/year | +10%/year |
-| Category | 26 (fixed) | Rarely changes |
+| Category | 28 (fixed) | Rarely changes |
 | CategoryRule | 50-100 | +5-10/year |
 | ImportSession | 10-20/year | Stable |
+| Account | 2-5 | Rarely changes |
+| Partner | 2-4 per Maatschap | Rarely changes |
 
 ## File Formats
 
@@ -217,3 +256,61 @@ categories:
     type: expense
     tax_deductible: true
 ```
+
+### accounts.yaml
+
+```yaml
+version: "1.0"
+accounts:
+  - id: goedele
+    name: "Vroedvrouw Goedele"
+    iban: "BE05 0636 4778 9475"
+    account_type: standard
+
+  - id: meraki
+    name: "Huis van Meraki"
+    iban: "BE98 0689 5286 6793"
+    account_type: maatschap
+    partners:
+      - name: "Vroedvrouw Goedele Deseyn"
+        iban: "BE05 0636 4778 9475"
+      - name: "HUIS VAN MERAKI - LEILA RCHAIDIA BV"
+        iban: "BE27 7370 6541 0173"
+```
+
+## Categorization Algorithm
+
+### Standard Account Flow
+
+```
+For each transaction:
+  1. Load rules sorted by priority (lower = higher priority)
+  2. For each rule where match_field = "counterparty_name":
+     - Apply pattern match to counterparty_name
+     - If match found → assign category, record matched_rule_id
+  3. If no match → mark as uncategorized
+```
+
+### Maatschap Account Flow
+
+```
+For each transaction from Maatschap account:
+  1. Load description rules sorted by priority
+  2. For each rule where match_field = "description":
+     - Apply pattern match to description
+     - If match found → assign category, record matched_rule_id, return
+  3. If no description match → fall through to counterparty rules
+  4. For each rule where match_field = "counterparty_name":
+     - Apply pattern match to counterparty_name
+     - If match found → assign category, record matched_rule_id
+  5. If no match → mark as uncategorized
+```
+
+### Description Rule Priority (Maatschap)
+
+| Priority | Pattern | Category |
+|----------|---------|----------|
+| 100 | `inkomstenverdeling` | winstverdeling |
+| 90 | `verkeerde\s*rekening` | verkeerde-rekening |
+| 80 | `google\s*workspace\|office\s*365` | licenties-software |
+| 70 | `Q[1-4]\s+maatschap\|20\d{7}` | contractors |

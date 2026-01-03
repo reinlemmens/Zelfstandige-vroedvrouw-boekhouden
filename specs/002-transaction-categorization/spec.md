@@ -1,8 +1,9 @@
 # Feature Specification: Transaction Categorization
 
-**Feature Branch**: `001-transaction-categorization`
+**Feature Branch**: `002-transaction-categorization`
 **Created**: 2026-01-02
-**Status**: Draft
+**Status**: Implemented
+**Implemented**: 2026-01-02
 **Input**: User description: "Apply consistent categorization of financial movements from Excel template to all bank and credit card statements"
 
 ## Clarifications
@@ -14,6 +15,12 @@
 - Q: How to handle Mastercard-Bank statement overlap? → A: Import Mastercard details, auto-exclude bank Mastercard settlement line
 - Q: How should initial category rules be created? → A: Extract patterns from existing 2024 and 2025 Excel categorizations
 - Q: Is P&L report generation part of this feature? → A: No, separate feature (this outputs categorized JSON)
+
+### Session 2026-01-03
+
+- Q: How should Maatschap (partnership) transactions be categorized? → A: Use description-based rules that take priority over counterparty matching
+- Q: What distinguishes profit distribution from partner work payments? → A: "Inkomstenverdeling" in description = winstverdeling; invoice numbers/quarter refs = contractors (work payments)
+- Q: Should new categories be added for Maatschap? → A: Add `winstverdeling` (profit distribution); use existing `contractors` category for partner work payments (not "vergoeding-vennoten" as these are work payments, not shareholder compensation)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -114,6 +121,24 @@ As a midwife, I want to mark certain revenue transactions as "Therapeutic" (dire
 
 ---
 
+### User Story 7 - Categorize Maatschap (Partnership) Transactions (Priority: P1)
+
+As a partner in a Maatschap (business partnership like "Huis van Meraki"), I want transactions between partners to be categorized based on the transaction description so that profit distributions, work payments, cost reimbursements, and corrections are properly distinguished.
+
+**Why this priority**: In a Maatschap, the same counterparty (e.g., "Vroedvrouw Goedele Deseyn" or "Leila Rchaidia") can represent different transaction types. Without description-based categorization, all payments to partners would be incorrectly categorized as the same type.
+
+**Independent Test**: Import Maatschap transactions with various descriptions and verify each is categorized correctly based on description content, not counterparty name.
+
+**Acceptance Scenarios**:
+
+1. **Given** a transaction with "Inkomstenverdeling" in the description, **When** auto-categorization runs, **Then** it is categorized as "winstverdeling" (profit distribution).
+2. **Given** a transaction with quarter reference (Q1, Q2, Q3, Q4) or invoice number in the description but NOT "Inkomstenverdeling", **When** auto-categorization runs, **Then** it is categorized as "contractors" (partner work payment, same as external contractors).
+3. **Given** a transaction with "Google workspace" or software name in the description, **When** auto-categorization runs, **Then** it is categorized as "licenties-software" (software cost reimbursement).
+4. **Given** a transaction with "Verkeerde rekening" in the description, **When** auto-categorization runs, **Then** it is categorized as "verkeerde-rekening" regardless of the counterparty.
+5. **Given** a Maatschap transaction where both counterparty and description rules could match, **When** auto-categorization runs, **Then** the description-based rule takes priority over counterparty-based rules.
+
+---
+
 ### Edge Cases
 
 - What happens when a transaction description is empty or contains only whitespace? The system uses counterparty name for categorization matching.
@@ -121,6 +146,9 @@ As a midwife, I want to mark certain revenue transactions as "Therapeutic" (dire
 - What happens when amount parsing fails due to unexpected format? The system flags the transaction for manual review with original value preserved.
 - What happens when the same vendor has multiple business categories? Multiple rules for the same counterparty with different description patterns are supported.
 - What happens when a bank CSV contains a Mastercard settlement line? The system auto-excludes bank transactions matching Mastercard settlement patterns to avoid double-counting with detailed Mastercard PDF transactions.
+- What happens when a Maatschap transaction has no description keywords? Fall back to counterparty-based rules; if no match, mark as uncategorized for manual review.
+- What happens when a partner payment description contains both "Maatschap" and other keywords? Use keyword priority: "Inkomstenverdeling" > "Verkeerde rekening" > software names > quarter/invoice references > "Maatschap" alone.
+- How are payments between the Maatschap and partner BVs (e.g., "HUIS VAN MERAKI - LEILA RCHAIDIA BV") categorized? Use the same description-based rules; the BV entity is treated as the partner for categorization purposes.
 
 ## Requirements *(mandatory)*
 
@@ -139,12 +167,22 @@ As a midwife, I want to mark certain revenue transactions as "Therapeutic" (dire
 - **FR-011**: System MUST persist categorized transactions to a JSON or YAML data file, preserving all categorization decisions and manual overrides between runs.
 - **FR-012**: System MUST auto-exclude bank CSV transactions that represent Mastercard monthly settlements (to avoid double-counting with detailed Mastercard PDF transactions).
 - **FR-013**: System MUST provide a bootstrap mechanism to extract categorization rules from existing Excel files (Verrichtingen 2024 and 2025 sheets) by mining counterparty-to-category patterns.
+- **FR-014**: System MUST support description-based categorization rules that match on the Omschrijving (description) field.
+- **FR-015**: System MUST apply description-based rules with higher priority than counterparty-based rules when both could match (for Maatschap accounts).
+- **FR-016**: System MUST categorize transactions with "Inkomstenverdeling" in description as "winstverdeling" (profit distribution).
+- **FR-017**: System MUST categorize transactions with quarter references (Q1, Q2, Q3, Q4) or invoice patterns in description (without "Inkomstenverdeling") as "contractors" (work payments between companies/independent entities, same treatment as external contractors).
+- **FR-018**: System MUST categorize transactions with "Verkeerde rekening" in description as "verkeerde-rekening" regardless of counterparty.
+- **FR-019**: System MUST support account-level configuration to indicate which accounts are Maatschap accounts requiring description-based categorization priority.
 
 ### Key Entities
 
 - **Transaction**: Represents a single financial movement with: source_file, statement_number, transaction_number (unique key), booking_date, value_date, amount, currency, counterparty_name, counterparty_iban, description, category, is_therapeutic, is_manual_override.
-- **Category**: A predefined expense or income type (e.g., "Omzet", "Huur onroerend goed", "Klein materiaal"). The 26 categories from the Excel template are: Admin kosten, Bankkosten, Boeken en tijdschriften, Bureelbenodigdheden, Drukwerk en publiciteit, Huur onroerend goed, Interne storting, Investeringen over 3 jaar, Klein materiaal, Kosten opleiding en vorming, Licenties software, Loon, Maatschap Huis van Meraki, Medisch materiaal, Omzet, Onthaal, Relatiegeschenken, Restaurant, Sociale bijdragen, Telefonie, Verkeerde rekening, Verzekering beroepsaansprakelijkheid, Vrij Aanvullend Pensioen Zelfstandigen, Vervoer, Mastercard, Sponsoring.
-- **CategoryRule**: A pattern-matching rule with: pattern_type (exact/prefix/contains/regex), pattern_value, target_category, priority_order.
+- **Category**: A predefined expense or income type. Categories include:
+  - **Original 26 categories**: Admin kosten, Bankkosten, Boeken en tijdschriften, Bureelbenodigdheden, Drukwerk en publiciteit, Huur onroerend goed, Interne storting, Investeringen over 3 jaar, Klein materiaal, Kosten opleiding en vorming, Licenties software, Loon (payments to private persons for work), Maatschap Huis van Meraki, Medisch materiaal, Omzet, Onthaal, Relatiegeschenken, Restaurant, Sociale bijdragen, Telefonie, Verkeerde rekening, Verzekering beroepsaansprakelijkheid, Vrij Aanvullend Pensioen Zelfstandigen, Vervoer, Mastercard, Sponsoring.
+  - **Extended categories**: Winstverdeling (profit distribution to partners), Contractors (payments for work to companies/independent entities including partners - same treatment as external contractors).
+- **CategoryRule**: A pattern-matching rule with: pattern_type (exact/prefix/contains/regex), pattern_value, match_field (counterparty_name or description), target_category, priority_order.
+- **Account**: A bank account configuration with: iban, name, account_type (standard or maatschap). Maatschap accounts use description-based categorization priority.
+- **DescriptionRule**: A specialized CategoryRule that matches on the transaction description field, used for Maatschap accounts where the same counterparty can represent different transaction types.
 
 ## Out of Scope
 
@@ -158,10 +196,13 @@ As a midwife, I want to mark certain revenue transactions as "Therapeutic" (dire
 - All transactions are in EUR (single currency).
 - Bank CSV exports follow the standard Belfius export format (columns: Rekening, Boekingsdatum, Rekeninguittrekselnummer, Transactienummer, Rekening tegenpartij, Naam tegenpartij bevat, Straat en nummer, Postcode en plaats, Transactie, Valutadatum, Bedrag, Devies, BIC, Landcode, Mededelingen).
 - Mastercard PDFs follow the standard Belfius credit card statement format.
-- The 26 categories from the existing Excel file represent the complete category set; new categories can be added via configuration.
+- The base categories from the existing Excel file represent the core category set; additional categories (winstverdeling, contractors) can be added via configuration.
 - A transaction belongs to exactly one category.
 - Fiscal year is the calendar year (January 1 - December 31).
 - Historical categorized data is available in `data/2024/Resultatenrekening Vroedvrouw Goedele 2024.xlsx` and `data/2025/Resultatenrekening Vroedvrouw Goedele 2025.xlsx` for rule extraction.
+- Maatschap accounts are identified by their IBAN in account configuration (e.g., BE98 0689 5286 6793 for Huis van Meraki).
+- Partners in a Maatschap may transact as individuals (e.g., "Vroedvrouw Goedele Deseyn") or through their BVs (e.g., "HUIS VAN MERAKI - LEILA RCHAIDIA BV"); both require description-based categorization.
+- "Loon" category is reserved for payments to private persons (natural persons) for work done; payments between companies/independent entities use "contractors".
 
 ## Success Criteria *(mandatory)*
 
@@ -172,3 +213,4 @@ As a midwife, I want to mark certain revenue transactions as "Therapeutic" (dire
 - **SC-003**: Users can complete the annual categorization review in under 2 hours (vs. current manual Excel process).
 - **SC-004**: Zero miscategorized transactions in the final P&L output (all flagged for review are resolved).
 - **SC-005**: Categorization rules are reusable year-over-year with minimal updates (fewer than 10 new rules per year).
+- **SC-006**: 100% of Maatschap transactions with description keywords (Inkomstenverdeling, Verkeerde rekening, Q1-Q4, invoice numbers) are correctly categorized by description-based rules.

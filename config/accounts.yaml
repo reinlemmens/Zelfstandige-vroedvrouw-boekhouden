@@ -1,0 +1,16 @@
+version: "1.0"
+accounts:
+  - id: goedele
+    name: "Vroedvrouw Goedele"
+    iban: "BE05 0636 4778 9475"
+    account_type: standard
+
+  - id: meraki
+    name: "Huis van Meraki"
+    iban: "BE98 0689 5286 6793"
+    account_type: maatschap
+    partners:
+      - name: "Vroedvrouw Goedele Deseyn"
+        iban: "BE05 0636 4778 9475"
+      - name: "HUIS VAN MERAKI - LEILA RCHAIDIA BV"
+        iban: "BE27 7370 6541 0173"

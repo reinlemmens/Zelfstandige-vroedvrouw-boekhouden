@@ -2,6 +2,8 @@
 
 **Input**: Design documents from `/specs/002-transaction-categorization/`
 **Prerequisites**: plan.md, spec.md, data-model.md, contracts/cli.md, research.md, quickstart.md
+**Base Status**: ✅ Implemented (2026-01-02) - User Stories 1-6 complete
+**Enhancement**: ✅ Complete (2026-01-03) - User Story 7 (Maatschap categorization)
 
 **Tests**: Not explicitly requested in spec - test tasks omitted.
 
@@ -174,17 +176,58 @@
 
 ---
 
-## Phase 9: Polish & Cross-Cutting Concerns
+## Phase 9: User Story 7 - Maatschap Transaction Categorization (Priority: P1) 🆕
+
+**Goal**: Enable description-based categorization for Maatschap (partnership) accounts where the same counterparty can represent different transaction types (profit distribution vs work payment vs cost reimbursement)
+
+**Independent Test**: Import Meraki transactions from `data/meraki/` and verify:
+- "Inkomstenverdeling" → winstverdeling (profit distribution)
+- "Q3 maatschap" → contractors (work payment)
+- "Google workspace" → licenties-software (cost reimbursement)
+- "Verkeerde rekening" → verkeerde-rekening (wrong account correction)
+
+**Functional Requirements**: FR-014 to FR-019
+
+### Setup for User Story 7
+
+- [x] T055 [P] [US7] Create account configuration file at config/accounts.yaml with goedele (standard) and meraki (maatschap) accounts per data-model.md
+- [x] T056 [P] [US7] Extend config/categories.yaml with new categories: winstverdeling, contractors
+
+### Model Extensions for User Story 7
+
+- [x] T057 [P] [US7] Create Account and Partner dataclasses in src/models/account.py with fields: id, name, iban, account_type (standard|maatschap), partners list
+- [x] T058 [US7] Extend Category definitions in src/models/category.py with WINSTVERDELING and CONTRACTORS constants
+
+### Implementation for User Story 7
+
+- [x] T059 [US7] Add account loading function load_accounts() in src/services/persistence.py to read config/accounts.yaml
+- [x] T060 [US7] Add description-based rules to config/rules.yaml with match_field: description for patterns: inkomstenverdeling, verkeerde rekening, google workspace, Q1-Q4, invoice numbers (20XXYYZZZ)
+- [x] T061 [US7] Add get_account_type_by_iban() helper function in src/services/persistence.py to determine account type from transaction IBAN
+- [x] T062 [US7] Modify categorize_transaction() in src/services/categorizer.py to check account_type and apply two-phase matching for maatschap accounts
+- [x] T063 [US7] Implement description-first matching logic in src/services/categorizer.py: if account_type=maatschap, try description rules before counterparty rules
+- [x] T064 [US7] Add logging for description-based rule matches in src/services/categorizer.py
+- [x] T065 [US7] Ensure standard accounts maintain existing behavior (counterparty-only matching) for backwards compatibility
+
+### Validation for User Story 7
+
+- [x] T066 [US7] Run categorization on data/meraki/ transactions and verify SC-006 (100% keyword-based accuracy for Inkomstenverdeling, Verkeerde rekening, Q1-Q4, invoice numbers)
+- [x] T067 [US7] Verify existing Goedele transactions in data/goedele/ still categorize correctly (backwards compatibility test)
+
+**Checkpoint**: Maatschap categorization working - run `plv categorize` on Meraki transactions
+
+---
+
+## Phase 10: Polish & Cross-Cutting Concerns
 
 **Purpose**: Refinements, validation, and documentation
 
-- [ ] T055 [P] Add verbose logging throughout all services using Python logging
-- [ ] T056 [P] Implement --verbose and --quiet global options in `src/cli/main.py`
-- [ ] T057 [P] Add --json global option for JSON output in `src/cli/main.py`
-- [ ] T058 Add input validation and helpful error messages for all CLI commands
-- [ ] T059 Add --version option showing package version in `src/cli/main.py`
-- [ ] T060 Validate quickstart.md workflow end-to-end with sample data
-- [ ] T061 Create sample test fixtures in `tests/fixtures/` (sample_bank.csv, sample_mastercard.pdf)
+- [ ] T068 [P] Add verbose logging throughout all services using Python logging
+- [ ] T069 [P] Implement --verbose and --quiet global options in `src/cli/main.py`
+- [ ] T070 [P] Add --json global option for JSON output in `src/cli/main.py`
+- [ ] T071 Add input validation and helpful error messages for all CLI commands
+- [ ] T072 Add --version option showing package version in `src/cli/main.py`
+- [ ] T073 Validate quickstart.md workflow end-to-end with sample data (including Maatschap section)
+- [ ] T074 Update CLAUDE.md with Maatschap account handling notes
 
 ---
 
@@ -194,11 +237,12 @@
 
 - **Setup (Phase 1)**: No dependencies - can start immediately
 - **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Stories (Phase 3+)**: All depend on Foundational phase completion
+- **User Stories (Phase 3-8)**: All depend on Foundational phase completion
   - US1 and US3 are both P1 but US3 depends on US1 (need transactions to categorize)
   - US2, US4, US5 (all P2) can proceed after US1
   - US6 (P3) can proceed after US5
-- **Polish (Final Phase)**: Depends on all user stories being complete
+- **US7 (Phase 9)**: Maatschap enhancement - depends on US3 categorizer being complete
+- **Polish (Phase 10)**: Depends on all user stories being complete
 
 ### User Story Dependencies
 
@@ -221,15 +265,17 @@
      └─────────────────┘ │ (P1)      │ └─────────────────┘
                          └─────┬─────┘
                                │
-                    ┌──────────▼──────────┐
-                    │ US5: Review/Correct │
-                    │ (P2)                │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ US6: Therapeutic    │
-                    │ (P3)                │
-                    └─────────────────────┘
+              ┌────────────────┼────────────────┐
+              │                                 │
+     ┌────────▼────────┐               ┌────────▼────────┐
+     │ US5: Review     │               │ US7: Maatschap  │ ◄── 🆕
+     │ (P2)            │               │ (P1)            │
+     └────────┬────────┘               └─────────────────┘
+              │
+     ┌────────▼────────┐
+     │ US6: Therapeutic│
+     │ (P3)            │
+     └─────────────────┘
 ```
 
 ### Within Each User Story
@@ -292,18 +338,19 @@ Task: US5 - "Implement plv list command in src/cli/main.py"
 
 ### Task Count Summary
 
-| Phase | Tasks | Parallel |
-|-------|-------|----------|
-| Setup | 6 | 4 |
-| Foundational | 8 | 5 |
-| US1 (P1) | 7 | 0 |
-| US3 (P1) | 8 | 0 |
-| US2 (P2) | 6 | 1 |
-| US4 (P2) | 8 | 2 |
-| US5 (P2) | 7 | 1 |
-| US6 (P3) | 4 | 0 |
-| Polish | 7 | 3 |
-| **Total** | **61** | **16** |
+| Phase | Tasks | Parallel | Status |
+|-------|-------|----------|--------|
+| Setup | 6 | 4 | ✅ Complete |
+| Foundational | 8 | 5 | ✅ Complete |
+| US1 (P1) | 7 | 0 | ✅ Complete |
+| US3 (P1) | 8 | 0 | ✅ Complete |
+| US2 (P2) | 6 | 1 | ✅ Complete |
+| US4 (P2) | 8 | 2 | ✅ Complete |
+| US5 (P2) | 7 | 1 | ✅ Complete |
+| US6 (P3) | 4 | 0 | ✅ Complete |
+| US7 (P1) 🆕 | 13 | 3 | ✅ Complete |
+| Polish | 7 | 3 | 🔄 Pending |
+| **Total** | **74** | **19** | |
 
 ---
 
@@ -315,3 +362,53 @@ Task: US5 - "Implement plv list command in src/cli/main.py"
 - Commit after each task or logical group
 - Stop at any checkpoint to validate progress
 - MVP (US1 + US3) covers core categorization workflow
+- US7 is a priority enhancement for Maatschap (partnership) accounts
+
+---
+
+## Maatschap Enhancement Reference (US7)
+
+### Description Rules (from research.md)
+
+| Priority | Pattern | Category | Match Field |
+|----------|---------|----------|-------------|
+| 100 | `inkomstenverdeling` | winstverdeling | description |
+| 90 | `verkeerde\s*rekening` | verkeerde-rekening | description |
+| 80 | `google\s*workspace\|office\s*365` | licenties-software | description |
+| 70 | `Q[1-4]\s+maatschap\|20\d{7}` | contractors | description |
+
+### Account Configuration (from data-model.md)
+
+```yaml
+# config/accounts.yaml
+accounts:
+  - id: goedele
+    name: "Vroedvrouw Goedele"
+    iban: "BE05 0636 4778 9475"
+    account_type: standard
+
+  - id: meraki
+    name: "Huis van Meraki"
+    iban: "BE98 0689 5286 6793"
+    account_type: maatschap
+    partners:
+      - name: "Vroedvrouw Goedele Deseyn"
+        iban: "BE05 0636 4778 9475"
+      - name: "HUIS VAN MERAKI - LEILA RCHAIDIA BV"
+        iban: "BE27 7370 6541 0173"
+```
+
+### Two-Phase Matching Algorithm
+
+```
+For each transaction:
+  1. Get account config by IBAN
+  2. If account_type == "maatschap":
+     a. First: Try description-based rules (in priority order)
+     b. If match found → return category
+     c. If no match → fall through to counterparty rules
+  3. If account_type == "standard":
+     a. Use counterparty rules only (existing behavior)
+  4. Apply counterparty rules (in priority order)
+  5. If still no match → mark as uncategorized
+```

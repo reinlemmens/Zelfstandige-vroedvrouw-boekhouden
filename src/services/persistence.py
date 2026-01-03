@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from src.models.account import Account
 from src.models.asset import Asset
 from src.models.category import Category
 from src.models.rule import CategoryRule
@@ -25,6 +26,7 @@ class PersistenceService:
         data_dir: str = "data/output",
         rules_file: str = "config/rules.yaml",
         categories_file: str = "config/categories.yaml",
+        accounts_file: str = "config/accounts.yaml",
     ):
         """Initialize persistence service.
 
@@ -32,10 +34,15 @@ class PersistenceService:
             data_dir: Directory for transaction data
             rules_file: Path to rules YAML file
             categories_file: Path to categories YAML file
+            accounts_file: Path to accounts YAML file
         """
         self.data_dir = Path(data_dir)
         self.rules_file = Path(rules_file)
         self.categories_file = Path(categories_file)
+        self.accounts_file = Path(accounts_file)
+
+        # Cache for accounts (loaded once per session)
+        self._accounts_cache: Optional[Dict[str, Account]] = None
 
         # Ensure data directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -335,3 +342,74 @@ class PersistenceService:
 
         with open(settings_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
+
+    # -------------------------------------------------------------------------
+    # Accounts
+    # -------------------------------------------------------------------------
+
+    def load_accounts(self, use_cache: bool = True) -> Dict[str, Account]:
+        """Load account configurations from YAML file.
+
+        Args:
+            use_cache: If True, return cached accounts if available
+
+        Returns:
+            Dictionary mapping account ID to Account object
+        """
+        # Return cached accounts if available and caching is enabled
+        if use_cache and self._accounts_cache is not None:
+            return self._accounts_cache
+
+        if not self.accounts_file.exists():
+            logger.warning(f"Accounts file not found: {self.accounts_file}")
+            return {}
+
+        with open(self.accounts_file, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        accounts = {}
+        for account_data in data.get('accounts', []):
+            try:
+                account = Account.from_dict(account_data)
+                accounts[account.id] = account
+            except Exception as e:
+                logger.error(f"Error loading account {account_data.get('id', 'unknown')}: {e}")
+
+        logger.info(f"Loaded {len(accounts)} accounts")
+
+        # Cache the loaded accounts
+        self._accounts_cache = accounts
+        return accounts
+
+    def get_account_by_iban(self, iban: str) -> Optional[Account]:
+        """Find an account by its IBAN.
+
+        Args:
+            iban: The IBAN to find (with or without spaces)
+
+        Returns:
+            Account if found, None otherwise
+        """
+        normalized_iban = iban.replace(' ', '').upper()
+        accounts = self.load_accounts()
+
+        for account in accounts.values():
+            if account.normalized_iban == normalized_iban:
+                return account
+
+        return None
+
+    def get_account_type_by_iban(self, iban: str) -> str:
+        """Get the account type for a given IBAN.
+
+        Args:
+            iban: The IBAN to look up
+
+        Returns:
+            'maatschap' if the IBAN belongs to a Maatschap account,
+            'standard' otherwise (default for unknown accounts)
+        """
+        account = self.get_account_by_iban(iban)
+        if account:
+            return account.account_type
+        return 'standard'

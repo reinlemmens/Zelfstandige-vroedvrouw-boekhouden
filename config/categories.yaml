@@ -74,9 +74,9 @@ categories:
 
   - id: loon
     name: Loon
-    type: expense
-    tax_deductible: true
-    description: Wages
+    type: excluded
+    tax_deductible: false
+    description: Owner withdrawals (not an expense in sole proprietorship)
 
   - id: maatschap-huis-van-meraki
     name: Maatschap Huis van Meraki
@@ -94,19 +94,22 @@ categories:
     name: Onthaal
     type: expense
     tax_deductible: true
-    description: Reception costs
+    deductibility_pct: 50
+    description: Reception costs (50% deductible per Belgian tax law)
 
   - id: relatiegeschenken
     name: Relatiegeschenken
     type: expense
     tax_deductible: true
-    description: Business gifts
+    deductibility_pct: 50
+    description: Business gifts (50% deductible per Belgian tax law)
 
   - id: restaurant
     name: Restaurant
     type: expense
     tax_deductible: true
-    description: Restaurant expenses
+    deductibility_pct: 69
+    description: Restaurant expenses (69% deductible per Belgian tax law)
 
   - id: sociale-bijdragen
     name: Sociale bijdragen
@@ -155,3 +158,21 @@ categories:
     type: expense
     tax_deductible: true
     description: Sponsorship costs
+
+  - id: prive-opname
+    name: Privé-opname
+    type: excluded
+    tax_deductible: false
+    description: Private withdrawals (excluded from P&L)
+
+  - id: winstverdeling
+    name: Winstverdeling
+    type: expense
+    tax_deductible: true
+    description: Profit distribution to Maatschap partners
+
+  - id: contractors
+    name: Contractors
+    type: expense
+    tax_deductible: true
+    description: Payments for work to companies/independent entities (incl. Maatschap partners)
