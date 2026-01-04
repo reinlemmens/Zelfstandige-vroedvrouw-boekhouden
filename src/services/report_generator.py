@@ -115,6 +115,21 @@ class ReportGenerator:
             logger.debug(f"Total uncategorized: {total_uncategorized}")
             report.uncategorized_items.append(ReportLineItem('Uncategorized', total_uncategorized, 'uncategorized'))
 
+        # Handle verkeerde-rekening (private expense) transactions for warning tracking
+        verkeerde_df = df[df['category'] == 'verkeerde-rekening']
+        if not verkeerde_df.empty:
+            # Create individual line items for each transaction (needed for detailed listing)
+            for _, row in verkeerde_df.iterrows():
+                report.verkeerde_rekening_items.append(
+                    ReportLineItem(
+                        category='verkeerde-rekening',
+                        amount=row['amount'],
+                        item_type='expense'
+                    )
+                )
+            logger.debug(f"Verkeerde-rekening transactions: {len(report.verkeerde_rekening_items)}, "
+                        f"balance: {report.verkeerde_rekening_balance}")
+
         # Calculate disallowed expenses (verworpen uitgaven)
         partial_categories = self._get_partially_deductible_categories()
         for category_id, deductible_pct in partial_categories.items():
@@ -282,6 +297,14 @@ class ReportGenerator:
             ws.cell(row=current_row, column=1, value=f"Waarschuwing: {report.total_uncategorized:,.2f} aan niet-gecategoriseerde transacties (niet opgenomen in resultaat).").font = Font(color="FF0000")
             current_row += 1
 
+        # Verkeerde-rekening warning (US2)
+        if report.verkeerde_rekening_balance != 0:
+            logger.debug("Adding verkeerde-rekening warning.")
+            balance = float(report.verkeerde_rekening_balance)
+            sign = "+" if balance > 0 else ""
+            ws.cell(row=current_row, column=1, value=f"Waarschuwing: Verkeerde rekening niet in balans (€ {sign}{balance:,.2f}).").font = Font(color="FF0000")
+            current_row += 1
+
         # Adjust column widths
         ws.column_dimensions['A'].width = 40
         ws.column_dimensions['B'].width = 15
@@ -366,6 +389,10 @@ class ReportGenerator:
 
         logger.info(f"Added {len(year_transactions)} transactions to Verrichtingen sheet")
 
+        # Create Aandachtspunten sheet if there are data quality warnings
+        if report.has_data_quality_warnings:
+            self._create_aandachtspunten_sheet(wb, report, header_fill, header_font, thin_border, currency_format)
+
         # Save workbook
         try:
             wb.save(output_path)
@@ -373,6 +400,141 @@ class ReportGenerator:
         except Exception as e:
             logger.error(f"Failed to save Excel file to {output_path}: {e}")
             raise
+
+    def _create_aandachtspunten_sheet(self, wb: Workbook, report: Report,
+                                       header_fill, header_font, thin_border,
+                                       currency_format: str) -> None:
+        """Create Aandachtspunten sheet with data quality warnings.
+
+        For MVP (US1): Shows uncategorized transaction details.
+        """
+        from openpyxl.styles import PatternFill
+
+        ws = wb.create_sheet(title="Aandachtspunten")
+
+        # Title
+        ws.cell(row=1, column=1, value=f"Aandachtspunten - Boekjaar {report.fiscal_year}").font = Font(size=16, bold=True)
+        ws.merge_cells('A1:D1')
+
+        current_row = 3
+
+        # Uncategorized transactions section (US1)
+        if report.total_uncategorized != 0:
+            count = len(report.uncategorized_items)
+            total = float(report.total_uncategorized)
+
+            # Warning summary
+            warning_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+            warning_cell = ws.cell(row=current_row, column=1,
+                                   value=f"Niet-gecategoriseerde transacties: {count} (€ {total:,.2f})")
+            warning_cell.font = Font(bold=True, color="92400E")
+            warning_cell.fill = warning_fill
+            ws.merge_cells(f'A{current_row}:D{current_row}')
+            current_row += 2
+
+            # Filter uncategorized transactions
+            uncategorized_tx = [
+                t for t in self.transactions
+                if t.booking_date.year == report.fiscal_year
+                and not t.category
+                and not t.is_excluded
+            ]
+            uncategorized_tx.sort(key=lambda t: t.booking_date)
+
+            if uncategorized_tx:
+                # Headers
+                headers = ['Datum', 'Bedrag', 'Tegenpartij', 'Omschrijving']
+                for col, header in enumerate(headers, 1):
+                    cell = ws.cell(row=current_row, column=col, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.border = thin_border
+                current_row += 1
+
+                # Transaction rows
+                for tx in uncategorized_tx:
+                    ws.cell(row=current_row, column=1,
+                            value=tx.booking_date.strftime('%d/%m/%Y')).border = thin_border
+                    amount_cell = ws.cell(row=current_row, column=2, value=float(tx.amount))
+                    amount_cell.number_format = currency_format
+                    amount_cell.border = thin_border
+                    ws.cell(row=current_row, column=3,
+                            value=(tx.counterparty_name or '-')[:40]).border = thin_border
+                    ws.cell(row=current_row, column=4,
+                            value=(tx.description or '-')[:60]).border = thin_border
+                    current_row += 1
+
+                current_row += 1
+
+            # Action required note
+            ws.cell(row=current_row, column=1,
+                    value="Actie: Controleer en categoriseer deze transacties.").font = Font(italic=True)
+            current_row += 2
+
+        # Verkeerde-rekening section (US2)
+        if report.verkeerde_rekening_balance != 0:
+            count = len(report.verkeerde_rekening_items)
+            balance = float(report.verkeerde_rekening_balance)
+            sign = "+" if balance > 0 else ""
+
+            # Warning summary
+            warning_fill = PatternFill(start_color="EDE9FE", end_color="EDE9FE", fill_type="solid")
+            warning_cell = ws.cell(row=current_row, column=1,
+                                   value=f"Privé-uitgaven (verkeerde rekening) - Niet in balans: € {sign}{balance:,.2f}")
+            warning_cell.font = Font(bold=True, color="5B21B6")
+            warning_cell.fill = warning_fill
+            ws.merge_cells(f'A{current_row}:D{current_row}')
+            current_row += 2
+
+            # Filter verkeerde-rekening transactions
+            verkeerde_tx = [
+                t for t in self.transactions
+                if t.booking_date.year == report.fiscal_year
+                and t.category == 'verkeerde-rekening'
+                and not t.is_excluded
+            ]
+            verkeerde_tx.sort(key=lambda t: t.booking_date)
+
+            if verkeerde_tx:
+                # Headers
+                headers = ['Datum', 'Bedrag', 'Tegenpartij', 'Omschrijving']
+                for col, header in enumerate(headers, 1):
+                    cell = ws.cell(row=current_row, column=col, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.border = thin_border
+                current_row += 1
+
+                # Transaction rows
+                for tx in verkeerde_tx:
+                    ws.cell(row=current_row, column=1,
+                            value=tx.booking_date.strftime('%d/%m/%Y')).border = thin_border
+                    amount_cell = ws.cell(row=current_row, column=2, value=float(tx.amount))
+                    amount_cell.number_format = currency_format
+                    amount_cell.border = thin_border
+                    ws.cell(row=current_row, column=3,
+                            value=(tx.counterparty_name or '-')[:40]).border = thin_border
+                    ws.cell(row=current_row, column=4,
+                            value=(tx.description or '-')[:60]).border = thin_border
+                    current_row += 1
+
+                current_row += 1
+
+            # Action required note
+            if balance < 0:
+                action_text = "Actie: Voeg ontbrekende terugbetalingen toe of corrigeer de categorisatie."
+            else:
+                action_text = "Actie: Controleer of alle terugbetalingen correct zijn gecategoriseerd."
+            ws.cell(row=current_row, column=1, value=action_text).font = Font(italic=True)
+            current_row += 2
+
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 14
+        ws.column_dimensions['B'].width = 14
+        ws.column_dimensions['C'].width = 35
+        ws.column_dimensions['D'].width = 50
+
+        logger.info("Created Aandachtspunten sheet with data quality warnings")
 
 
     def format_for_console(self, report: Report) -> str:
