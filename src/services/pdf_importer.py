@@ -1,5 +1,6 @@
 """Belfius Mastercard PDF statement importer."""
 
+import io
 import logging
 import re
 from datetime import datetime
@@ -107,6 +108,90 @@ class PDFImporter:
 
         logger.info(
             f"Imported {session.transactions_imported} transactions from {file_path.name} "
+            f"(skipped: {session.transactions_skipped})"
+        )
+
+        return transactions, session
+
+    def import_from_bytes(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        fiscal_year: Optional[int] = None,
+        force: bool = False,
+    ) -> Tuple[List[Transaction], ImportSession]:
+        """Import transactions from PDF file bytes (for Streamlit uploads).
+
+        Args:
+            file_bytes: Raw bytes of the PDF file
+            filename: Original filename for error reporting
+            fiscal_year: Optional fiscal year filter
+            force: If True, re-import even if transaction exists
+
+        Returns:
+            Tuple of (list of imported transactions, import session with stats)
+        """
+        session = ImportSession(source_files=[filename])
+        transactions = []
+
+        try:
+            # Extract statement number from filename
+            statement_match = re.search(r'^(\d+)_', filename)
+            statement_number = statement_match.group(1) if statement_match else "MC"
+
+            # Open PDF from bytes
+            pdf_file = io.BytesIO(file_bytes)
+            with pdfplumber.open(pdf_file) as pdf:
+                tx_sequence = 1
+
+                for page_num, page in enumerate(pdf.pages, 1):
+                    tables = page.extract_tables()
+
+                    for table in tables:
+                        if not table:
+                            continue
+
+                        for row in table:
+                            if not row or len(row) < 4:
+                                continue
+
+                            try:
+                                tx = self._parse_row(
+                                    row,
+                                    filename,
+                                    statement_number,
+                                    tx_sequence,
+                                    page_num,
+                                )
+
+                                if tx is None:
+                                    continue
+
+                                if fiscal_year and tx.booking_date.year != fiscal_year:
+                                    continue
+
+                                if tx.id in self.existing_ids and not force:
+                                    session.transactions_skipped += 1
+                                    continue
+
+                                transactions.append(tx)
+                                self.existing_ids.add(tx.id)
+                                session.transactions_imported += 1
+                                tx_sequence += 1
+
+                            except Exception as e:
+                                logger.debug(f"Skipping row on page {page_num}: {e}")
+
+        except Exception as e:
+            error = ImportError(
+                file=filename,
+                message=f"Failed to read PDF: {e}",
+            )
+            session.errors.append(error)
+            logger.error(f"Failed to read {filename}: {e}")
+
+        logger.info(
+            f"Imported {session.transactions_imported} transactions from {filename} "
             f"(skipped: {session.transactions_skipped})"
         )
 

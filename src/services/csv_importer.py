@@ -2,6 +2,7 @@
 
 import csv
 import hashlib
+import io
 import logging
 import re
 from datetime import datetime
@@ -135,6 +136,91 @@ class CSVImporter:
 
         logger.info(
             f"Imported {session.transactions_imported} transactions from {file_path.name} "
+            f"(skipped: {session.transactions_skipped}, excluded: {session.transactions_excluded})"
+        )
+
+        return transactions, session
+
+    def import_from_bytes(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        fiscal_year: Optional[int] = None,
+        force: bool = False,
+    ) -> Tuple[List[Transaction], ImportSession]:
+        """Import transactions from CSV file bytes (for Streamlit uploads).
+
+        Args:
+            file_bytes: Raw bytes of the CSV file
+            filename: Original filename for error reporting
+            fiscal_year: Optional fiscal year filter
+            force: If True, re-import even if transaction exists
+
+        Returns:
+            Tuple of (list of imported transactions, import session with stats)
+        """
+        session = ImportSession(source_files=[filename])
+        transactions = []
+
+        try:
+            # Decode bytes to string and create file-like object
+            content = file_bytes.decode('utf-8')
+            f = io.StringIO(content)
+
+            # Skip header lines
+            for _ in range(HEADER_LINES_TO_SKIP):
+                next(f, None)
+
+            reader = csv.reader(f, delimiter=';')
+
+            for line_num, row in enumerate(reader, start=HEADER_LINES_TO_SKIP + 1):
+                if not row or len(row) < 15:
+                    continue
+
+                try:
+                    tx = self._parse_row(row, filename, line_num)
+
+                    if tx is None:
+                        continue
+
+                    if fiscal_year and tx.booking_date.year != fiscal_year:
+                        continue
+
+                    if self._is_mastercard_settlement(tx):
+                        tx.is_excluded = True
+                        tx.exclusion_reason = "Mastercard settlement - details in PDF"
+                        session.transactions_excluded += 1
+                        transactions.append(tx)
+                        continue
+
+                    if tx.id in self.existing_ids and not force:
+                        session.transactions_skipped += 1
+                        continue
+
+                    transactions.append(tx)
+                    self.existing_ids.add(tx.id)
+                    session.transactions_imported += 1
+
+                except Exception as e:
+                    error = ImportError(
+                        file=filename,
+                        line=line_num,
+                        message=str(e),
+                        raw_data=';'.join(row) if row else None,
+                    )
+                    session.errors.append(error)
+                    logger.error(f"Error parsing line {line_num}: {e}")
+
+        except Exception as e:
+            error = ImportError(
+                file=filename,
+                message=f"Failed to read file: {e}",
+            )
+            session.errors.append(error)
+            logger.error(f"Failed to read {filename}: {e}")
+
+        logger.info(
+            f"Imported {session.transactions_imported} transactions from {filename} "
             f"(skipped: {session.transactions_skipped}, excluded: {session.transactions_excluded})"
         )
 
