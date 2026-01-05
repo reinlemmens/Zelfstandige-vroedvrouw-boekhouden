@@ -37,8 +37,8 @@
 | II. Belgian Tax Compliance | Categories align with Resultatenrekening | [ ] |
 | III. Transparency | Categorization decisions explainable | [ ] |
 | IV. User Control | No assumptions without user confirmation | [ ] |
-| V. Simplicity & Accessibility | CLI + Streamlit use same core services | [ ] |
-| VI. Stateless Public Operation | No server-side persistence of user data | [ ] |
+| V. Simplicity | CLI-based, minimal dependencies | [ ] |
+| VI. Test Coverage | Automated tests for all features | [ ] |
 
 ## Project Structure
 

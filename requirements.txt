@@ -1,0 +1,26 @@
+# PLV Web Interface - Streamlit Cloud dependencies
+# Generated for feature 009-streamlit-web-app
+
+# Web framework
+streamlit>=1.28.0
+
+# Data processing
+pandas>=2.0.0
+
+# Excel support
+openpyxl>=3.1.0
+
+# PDF parsing
+pdfplumber>=0.10.0
+
+# Configuration
+PyYAML>=6.0
+
+# PDF report generation
+reportlab>=4.0.0
+
+# Charts and visualization
+plotly>=5.18.0
+
+# CLI (existing functionality)
+click>=8.1.0

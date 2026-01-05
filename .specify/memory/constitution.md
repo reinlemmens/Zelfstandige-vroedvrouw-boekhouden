@@ -1,22 +1,20 @@
 <!--
   SYNC IMPACT REPORT
   ====================
-  Version change: 0.0.0 → 1.0.0 (MAJOR - initial constitution)
+  Version change: 1.0.0 → 2.0.0 (MAJOR - Principle V redefined for Streamlit)
 
-  Modified principles: N/A (new constitution)
+  Modified principles:
+  - V. Simplicity → V. Simplicity & Accessibility (expanded to include Streamlit web interface)
 
   Added sections:
-  - Core Principles (5 principles)
-  - Input Data Requirements
-  - Output Requirements
-  - Governance
+  - Principle VI: Stateless Public Operation
 
-  Removed sections: N/A
+  Removed sections: None
 
   Templates requiring updates:
-  - .specify/templates/plan-template.md: ✅ No changes needed (generic)
-  - .specify/templates/spec-template.md: ✅ No changes needed (generic)
-  - .specify/templates/tasks-template.md: ✅ No changes needed (generic)
+  - .specify/templates/plan-template.md: ✅ Updated - Constitution Check now includes all 6 principles
+  - .specify/templates/spec-template.md: ✅ No changes needed
+  - .specify/templates/tasks-template.md: ✅ No changes needed
 
   Follow-up TODOs: None
 -->
@@ -74,17 +72,42 @@ The system MUST NOT make assumptions about deductibility without user confirmati
 
 **Rationale**: Tax liability is personal. The taxpayer must control and understand all inputs.
 
-### V. Simplicity
+### V. Simplicity & Accessibility
 
-Implementation MUST be Python CLI scripts that can be run locally. No web servers, databases,
-or cloud services required. Configuration via simple files (YAML/JSON). Output as Excel
-(matching the existing format) plus optional CSV/JSON for analysis.
+The tool provides two interfaces:
+- **CLI** (primary): Python scripts runnable locally for power users and automation
+- **Web** (Streamlit): Browser-based interface for users who prefer not to use command line
 
-Dependencies MUST be minimal and well-maintained (pandas, openpyxl for Excel, pdfplumber or
-similar for PDF parsing).
+Both interfaces MUST use the same core services and produce identical outputs for the same
+inputs. Configuration via simple files (YAML/JSON). Output as Excel (matching the existing
+format) plus optional CSV/JSON/PDF for analysis.
 
-**Rationale**: This is an annual task. The tool must remain runnable year after year without
-complex infrastructure maintenance.
+Dependencies MUST be minimal and well-maintained (pandas, openpyxl, pdfplumber, Streamlit).
+The Streamlit app MUST be deployable on Streamlit Community Cloud (free tier).
+
+**Rationale**: This is an annual task. The tool must remain accessible to non-technical users
+while still supporting CLI workflows for automation and advanced use cases.
+
+### VI. Stateless Public Operation
+
+The Streamlit web application is public and MUST operate statelessly:
+- NO server-side persistence of user data between sessions
+- NO user accounts, authentication, or login required
+- ALL uploaded files processed in-memory only
+- Session data cleared when browser tab closes or session times out
+- Users MUST re-upload files to resume work
+
+The application MUST NOT:
+- Store financial data on the server filesystem
+- Log or transmit transaction details to external services
+- Retain any user-identifiable information after session ends
+
+Configuration files (rules, categories) may be bundled with the application or loaded per
+company selection, but user-uploaded bank statements MUST NOT persist.
+
+**Rationale**: Financial data is sensitive. A public stateless design ensures users retain
+full control of their data while enabling convenient browser-based access without complex
+authentication infrastructure.
 
 ## Input Data Requirements
 
@@ -125,7 +148,7 @@ complex infrastructure maintenance.
 - Category-wise expense analysis
 - Year-over-year comparison (when previous year data available)
 - Profitability metrics (revenue vs. costs)
-- Format: Excel sheets or CSV
+- Format: Excel sheets, CSV, or PDF (Jaarverslag)
 
 ## Governance
 
@@ -142,5 +165,6 @@ tool. All implementation decisions MUST align with these principles.
 **Compliance Review**:
 - Before each annual tax filing, verify tool output against principles
 - Any discrepancies must be resolved before submission
+- For public web app: periodically verify no data persistence violations
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-02 | **Last Amended**: 2026-01-02
+**Version**: 2.0.0 | **Ratified**: 2026-01-02 | **Last Amended**: 2026-01-05
