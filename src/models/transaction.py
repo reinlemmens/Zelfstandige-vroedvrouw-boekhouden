@@ -50,6 +50,7 @@ class Transaction:
     counterparty_bic: Optional[str] = None
     counterparty_country: Optional[str] = None
     own_account: Optional[str] = None
+    communication: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
     matched_rule_id: Optional[str] = None
@@ -97,6 +98,7 @@ class Transaction:
             'counterparty_bic': self.counterparty_bic,
             'counterparty_country': self.counterparty_country,
             'own_account': self.own_account,
+            'communication': self.communication,
             'description': self.description,
             'category': self.category,
             'matched_rule_id': self.matched_rule_id,
@@ -105,6 +107,11 @@ class Transaction:
             'is_excluded': self.is_excluded,
             'exclusion_reason': self.exclusion_reason,
         }
+
+    @property
+    def counterparty_account(self) -> Optional[str]:
+        """Backward-compatible alias for `counterparty_iban`."""
+        return self.counterparty_iban
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Transaction':
@@ -126,6 +133,7 @@ class Transaction:
             counterparty_bic=data.get('counterparty_bic'),
             counterparty_country=data.get('counterparty_country'),
             own_account=data.get('own_account'),
+            communication=data.get('communication'),
             description=data.get('description'),
             category=data.get('category'),
             matched_rule_id=data.get('matched_rule_id'),

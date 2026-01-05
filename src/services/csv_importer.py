@@ -177,6 +177,7 @@ class CSVImporter:
 
         # Use the more detailed description
         description = transaction_desc if transaction_desc else communications
+        communication = communications or None
 
         # Generate unique ID
         if statement_number and transaction_number:
@@ -212,6 +213,7 @@ class CSVImporter:
             counterparty_bic=counterparty_bic,
             counterparty_country=counterparty_country,
             own_account=own_account,
+            communication=communication,
             description=description,
         )
 
