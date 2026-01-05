@@ -655,8 +655,27 @@ def main():
         with col3:
             st.metric("Uitgesloten", stats.get('excluded', 0))
 
+        # Show per-file breakdown
+        file_results = stats.get('file_results', [])
+        if file_results:
+            with st.expander(f"📁 Details per bestand ({len(file_results)} bestanden)", expanded=True):
+                for fr in file_results:
+                    icon = "📄" if fr['type'] == 'CSV' else "📑"
+                    imported = fr['imported']
+                    status = "✅" if imported > 0 else "⚠️"
+                    details = []
+                    if imported > 0:
+                        details.append(f"{imported} geïmporteerd")
+                    if fr['skipped'] > 0:
+                        details.append(f"{fr['skipped']} overgeslagen")
+                    if fr['excluded'] > 0:
+                        details.append(f"{fr['excluded']} uitgesloten")
+                    if not details:
+                        details.append("geen transacties gevonden")
+                    st.write(f"{status} {icon} **{fr['file']}**: {', '.join(details)}")
+
         if stats.get('errors'):
-            with st.expander(f"⚠️ {len(stats['errors'])} fout(en)", expanded=False):
+            with st.expander(f"⚠️ {len(stats['errors'])} fout(en)", expanded=True):
                 for error in stats['errors']:
                     st.warning(f"**{error.get('file', 'Onbekend')}**: {error.get('message', 'Onbekende fout')}")
 
@@ -765,7 +784,13 @@ def display_pnl_summary():
     )
     report = generator.generate_pnl_report(st.session_state.fiscal_year)
 
-    uncategorized_count = len(report.uncategorized_items)
+    uncategorized_count = len([
+        tx for tx in st.session_state.transactions
+        if tx.category is None
+        and not tx.is_excluded
+        and tx.booking_date
+        and tx.booking_date.year == st.session_state.fiscal_year
+    ])
     if uncategorized_count:
         st.warning(
             f"⚠️ {uncategorized_count} niet-gecategoriseerde transactie(s) "
@@ -1017,6 +1042,7 @@ def process_uploaded_files(uploaded_files):
     total_skipped = 0
     total_excluded = 0
     all_errors = []
+    file_results = []  # Track per-file results
 
     with st.spinner("Bestanden worden verwerkt..."):
         for uploaded_file in uploaded_files:
@@ -1061,10 +1087,14 @@ def process_uploaded_files(uploaded_files):
                     })
                     continue
 
-                # Check for empty result (T017)
-                if not transactions and session.transactions_imported == 0:
-                    if not session.errors:
-                        st.info(f"Geen transacties gevonden in {filename}")
+                # Track per-file results
+                file_results.append({
+                    'file': filename,
+                    'imported': session.transactions_imported,
+                    'skipped': session.transactions_skipped,
+                    'excluded': getattr(session, 'transactions_excluded', 0),
+                    'type': 'CSV' if filename.lower().endswith('.csv') else 'PDF',
+                })
 
                 # Add transactions to session state
                 st.session_state.transactions.extend(transactions)
@@ -1101,6 +1131,7 @@ def process_uploaded_files(uploaded_files):
         'skipped': total_skipped,
         'excluded': total_excluded,
         'errors': all_errors,
+        'file_results': file_results,  # Per-file breakdown
     }
 
     # Show success message
