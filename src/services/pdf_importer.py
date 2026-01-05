@@ -1,5 +1,6 @@
 """Belfius Mastercard PDF statement importer."""
 
+import hashlib
 import io
 import logging
 import re
@@ -139,48 +140,53 @@ class PDFImporter:
             statement_match = re.search(r'^(\d+)_', filename)
             statement_number = statement_match.group(1) if statement_match else "MC"
 
-            # Open PDF from bytes
+            # Open PDF from bytes and extract text
             pdf_file = io.BytesIO(file_bytes)
             with pdfplumber.open(pdf_file) as pdf:
                 tx_sequence = 1
+                statement_year = None
 
                 for page_num, page in enumerate(pdf.pages, 1):
-                    tables = page.extract_tables()
+                    text = page.extract_text()
+                    if not text:
+                        continue
 
-                    for table in tables:
-                        if not table:
+                    # Try to extract statement year from text (e.g., "Transacties van 26/09/2025 tot 25/10/2025")
+                    if statement_year is None:
+                        year_match = re.search(r'Transacties van \d{2}/\d{2}/(\d{4})', text)
+                        if year_match:
+                            statement_year = int(year_match.group(1))
+                        elif fiscal_year:
+                            statement_year = fiscal_year
+                        else:
+                            statement_year = datetime.now().year
+
+                    # Parse transactions from text
+                    # Format: DD/MM DD/MM DESCRIPTION AMOUNT EUR[+-]
+                    lines = text.split('\n')
+                    for line in lines:
+                        tx = self._parse_text_line(
+                            line,
+                            filename,
+                            statement_number,
+                            tx_sequence,
+                            statement_year,
+                        )
+
+                        if tx is None:
                             continue
 
-                        for row in table:
-                            if not row or len(row) < 4:
-                                continue
+                        if fiscal_year and tx.booking_date.year != fiscal_year:
+                            continue
 
-                            try:
-                                tx = self._parse_row(
-                                    row,
-                                    filename,
-                                    statement_number,
-                                    tx_sequence,
-                                    page_num,
-                                )
+                        if tx.id in self.existing_ids and not force:
+                            session.transactions_skipped += 1
+                            continue
 
-                                if tx is None:
-                                    continue
-
-                                if fiscal_year and tx.booking_date.year != fiscal_year:
-                                    continue
-
-                                if tx.id in self.existing_ids and not force:
-                                    session.transactions_skipped += 1
-                                    continue
-
-                                transactions.append(tx)
-                                self.existing_ids.add(tx.id)
-                                session.transactions_imported += 1
-                                tx_sequence += 1
-
-                            except Exception as e:
-                                logger.debug(f"Skipping row on page {page_num}: {e}")
+                        transactions.append(tx)
+                        self.existing_ids.add(tx.id)
+                        session.transactions_imported += 1
+                        tx_sequence += 1
 
         except Exception as e:
             error = ImportError(
@@ -196,6 +202,90 @@ class PDFImporter:
         )
 
         return transactions, session
+
+    def _parse_text_line(
+        self,
+        line: str,
+        source_file: str,
+        statement_number: str,
+        sequence: int,
+        statement_year: Optional[int] = None,
+    ) -> Optional[Transaction]:
+        """Parse a text line from Belfius Mastercard PDF.
+
+        Format: DD/MM DD/MM DESCRIPTION AMOUNT EUR[+-]
+        Example: 03/10 06/10 SP TALES.COM PROVO US 38,51 EUR-
+
+        Args:
+            line: Text line from PDF
+            source_file: Name of source file
+            statement_number: Statement identifier
+            sequence: Transaction sequence number
+            statement_year: Year from statement filename
+
+        Returns:
+            Transaction object or None if line doesn't match format
+        """
+        line = line.strip()
+        if not line:
+            return None
+
+        # Match pattern: DD/MM DD/MM ... AMOUNT EUR[+-]
+        # Transaction date, settlement date, description, amount
+        pattern = r'^(\d{2}/\d{2})\s+(\d{2}/\d{2})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s*EUR([+-])$'
+        match = re.match(pattern, line)
+
+        if not match:
+            return None
+
+        tx_date_str = match.group(1)  # DD/MM
+        settlement_date_str = match.group(2)  # DD/MM
+        description = match.group(3).strip()
+        amount_str = match.group(4)
+        sign = match.group(5)
+
+        # Determine year - use statement_year or current year
+        year = statement_year or datetime.now().year
+
+        # Parse dates (DD/MM format, add year)
+        try:
+            booking_date = datetime.strptime(f"{tx_date_str}/{year}", "%d/%m/%Y").date()
+            value_date = datetime.strptime(f"{settlement_date_str}/{year}", "%d/%m/%Y").date()
+        except ValueError:
+            return None
+
+        # Parse amount
+        try:
+            amount = parse_belgian_amount(amount_str)
+            # Apply sign: - means expense, + means refund
+            if sign == '-':
+                amount = -abs(amount)
+            else:
+                amount = abs(amount)
+        except ValueError:
+            return None
+
+        # Skip zero amounts
+        if amount == Decimal('0'):
+            return None
+
+        # Generate unique ID using date hash for better deduplication
+        date_hash = hashlib.md5(f"{booking_date.isoformat()}|{amount}|{description}".encode()).hexdigest()[:8]
+        tx_id = f"MC-{statement_number}-{booking_date.strftime('%Y%m%d')}-{date_hash}"
+
+        return Transaction(
+            id=tx_id,
+            source_file=source_file,
+            source_type='mastercard_pdf',
+            statement_number=statement_number,
+            transaction_number=str(sequence),
+            booking_date=booking_date,
+            value_date=value_date,
+            amount=amount,
+            currency="EUR",
+            counterparty_name=description[:100] if description else None,
+            description=description,
+        )
 
     def _parse_row(
         self,
