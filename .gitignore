@@ -67,3 +67,13 @@ data/output/
 
 # Local exports/scratch files
 test_report.xlsx
+
+# Private company data
+data/goedele/
+data/meraki/
+data/testcompany/
+data/*.xlsx
+data/*.csv
+data/*.pdf
+data/2024/
+data/2025/
