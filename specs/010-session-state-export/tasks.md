@@ -24,9 +24,9 @@
 
 **Purpose**: Fix existing bugs and prepare session state tracking
 
-- [ ] T001 Fix Category.to_dict() to include deductibility_pct in src/models/category.py
-- [ ] T002 [P] Add unit test for Category serialization round-trip in tests/unit/test_category_serialization.py
-- [ ] T003 Add new session state variables (company_name, custom_rules_loaded, custom_categories_loaded, uploaded_files_content) to init_session_state() in streamlit_app.py
+- [x] T001 Fix Category.to_dict() to include deductibility_pct in src/models/category.py
+- [ ] T002 [P] Add unit test for Category serialization round-trip in tests/unit/test_category_serialization.py (SKIPPED - tests optional)
+- [x] T003 Add new session state variables (company_name, custom_rules_loaded, custom_categories_loaded, uploaded_files_content) to init_session_state() in streamlit_app.py
 
 ---
 
@@ -36,12 +36,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Create SessionState dataclass in src/models/session_state.py with version, company_name, fiscal_year, exported_at, transactions, existing_ids, categorization_done, import_stats, custom_rules_loaded, custom_categories_loaded fields
-- [ ] T005 [P] Create StateFile validation functions in src/models/session_state.py (validate_state_dict, validate_version)
-- [ ] T006 Create session_to_dict() function in src/services/session_export.py to serialize session state
-- [ ] T007 Create dict_to_session() function in src/services/session_export.py to deserialize session state
-- [ ] T008 [P] Create sanitize_filename() helper in src/services/session_export.py for company name sanitization
-- [ ] T009 Implement version migration framework in src/services/session_export.py (apply_migrations function)
+- [x] T004 Create SessionState dataclass in src/models/session_state.py with version, company_name, fiscal_year, exported_at, transactions, existing_ids, categorization_done, import_stats, custom_rules_loaded, custom_categories_loaded fields
+- [x] T005 [P] Create StateFile validation functions in src/models/session_state.py (validate_state_dict, validate_version)
+- [x] T006 Create session_to_dict() function in src/services/session_export.py to serialize session state
+- [x] T007 Create dict_to_session() function in src/services/session_export.py to deserialize session state
+- [x] T008 [P] Create sanitize_filename() helper in src/services/session_export.py for company name sanitization
+- [x] T009 Implement version migration framework in src/services/session_export.py (apply_migrations function)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -63,15 +63,15 @@
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement create_export_zip() in src/services/session_export.py that creates ZIP with state.json
-- [ ] T014 [US1] Add custom rules.yaml inclusion to create_export_zip() when custom_rules_loaded is True
-- [ ] T015 [US1] Add custom categories.yaml inclusion to create_export_zip() when custom_categories_loaded is True
-- [ ] T016 [US1] Add source_files/ directory inclusion to create_export_zip() with optional flag
-- [ ] T017 [US1] Update config upload handlers in streamlit_app.py to track custom_rules_content and custom_categories_content
-- [ ] T018 [US1] Update process_uploaded_files() in streamlit_app.py to store file content in uploaded_files_content
-- [ ] T019 [US1] Add "Exporteer sessie" section to sidebar in streamlit_app.py (visible when transactions exist)
-- [ ] T020 [US1] Add "Bronbestanden toevoegen" checkbox to export section in streamlit_app.py
-- [ ] T021 [US1] Implement st.download_button for ZIP export in streamlit_app.py
+- [x] T013 [US1] Implement create_export_zip() in src/services/session_export.py that creates ZIP with state.json
+- [x] T014 [US1] Add custom rules.yaml inclusion to create_export_zip() when custom_rules_loaded is True
+- [x] T015 [US1] Add custom categories.yaml inclusion to create_export_zip() when custom_categories_loaded is True
+- [x] T016 [US1] Add source_files/ directory inclusion to create_export_zip() with optional flag
+- [x] T017 [US1] Update config upload handlers in streamlit_app.py to track custom_rules_content and custom_categories_content
+- [x] T018 [US1] Update process_uploaded_files() in streamlit_app.py to store file content in uploaded_files_content
+- [x] T019 [US1] Add "Exporteer sessie" section to sidebar in streamlit_app.py (visible when transactions exist)
+- [x] T020 [US1] Add "Bronbestanden toevoegen" checkbox to export section in streamlit_app.py
+- [x] T021 [US1] Implement st.download_button for ZIP export in streamlit_app.py
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - users can export their session
 
@@ -91,16 +91,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Implement validate_import_zip() in src/services/session_export.py that checks ZIP structure and state.json validity
-- [ ] T026 [US2] Implement import_session_zip() in src/services/session_export.py that restores session state
-- [ ] T027 [US2] Add rules.yaml restoration to import_session_zip() when present in ZIP
-- [ ] T028 [US2] Add categories.yaml restoration to import_session_zip() when present in ZIP
-- [ ] T029 [US2] Add "Importeer sessie" file uploader to sidebar in streamlit_app.py
-- [ ] T030 [US2] Implement confirmation dialog when importing would replace existing data in streamlit_app.py
-- [ ] T031 [US2] Display success message with transaction count after import in streamlit_app.py
-- [ ] T032 [US2] Display clear error messages for invalid/corrupted import files in streamlit_app.py
-- [ ] T033 [US2] Display version migration info message when importing older files in streamlit_app.py
-- [ ] T034 [US2] Update fiscal year selector to match imported session data in streamlit_app.py
+- [x] T025 [US2] Implement validate_import_zip() in src/services/session_export.py that checks ZIP structure and state.json validity
+- [x] T026 [US2] Implement import_session_zip() in src/services/session_export.py that restores session state
+- [x] T027 [US2] Add rules.yaml restoration to import_session_zip() when present in ZIP
+- [x] T028 [US2] Add categories.yaml restoration to import_session_zip() when present in ZIP
+- [x] T029 [US2] Add "Importeer sessie" file uploader to sidebar in streamlit_app.py
+- [x] T030 [US2] Implement confirmation dialog when importing would replace existing data in streamlit_app.py
+- [x] T031 [US2] Display success message with transaction count after import in streamlit_app.py
+- [x] T032 [US2] Display clear error messages for invalid/corrupted import files in streamlit_app.py
+- [x] T033 [US2] Display version migration info message when importing older files in streamlit_app.py
+- [x] T034 [US2] Update fiscal year selector to match imported session data in streamlit_app.py
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - full export/import cycle functional
 
@@ -119,10 +119,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T037 [US3] Add "Bedrijfsnaam" text input to sidebar in streamlit_app.py
-- [ ] T038 [US3] Update export filename generation to use sanitized company name in streamlit_app.py
-- [ ] T039 [US3] Use "sessie" as default company name when field is empty in streamlit_app.py
-- [ ] T040 [US3] Restore company name from imported session in streamlit_app.py
+- [x] T037 [US3] Add "Bedrijfsnaam" text input to sidebar in streamlit_app.py
+- [x] T038 [US3] Update export filename generation to use sanitized company name in streamlit_app.py
+- [x] T039 [US3] Use "sessie" as default company name when field is empty in streamlit_app.py
+- [x] T040 [US3] Restore company name from imported session in streamlit_app.py
 
 **Checkpoint**: All user stories should now be independently functional
 

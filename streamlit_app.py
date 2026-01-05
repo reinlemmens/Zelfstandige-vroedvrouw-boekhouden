@@ -7,7 +7,6 @@ view P&L summaries, and download reports.
 
 import io
 import sys
-import tempfile
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -27,7 +26,14 @@ from src.services.csv_importer import CSVImporter
 from src.services.pdf_importer import PDFImporter
 from src.services.categorizer import Categorizer
 from src.services.report_generator import ReportGenerator
-from src.services.pdf_report_generator import PDFReportGenerator
+from src.services.session_export import (
+    create_export_zip,
+    get_export_filename,
+    validate_import_zip,
+    import_session_zip,
+    session_to_dict,
+    dict_to_session,
+)
 
 # Page configuration - must be first Streamlit command
 st.set_page_config(
@@ -84,7 +90,7 @@ DEFAULT_CATEGORIES = [
     Category(id='loon', name='Loon', type='excluded', tax_deductible=False, description='Owner salary withdrawals'),
     Category(id='verkeerde-rekening', name='Verkeerde rekening', type='excluded', tax_deductible=False, description='Private expenses (wrong account)'),
     Category(id='verkeerde-rekening-matched', name='Verkeerde rekening (matched)', type='excluded', tax_deductible=False, description='Matched expense/reimbursement pairs'),
-    Category(id='mastercard', name='Mastercard afrekening', type='excluded', tax_deductible=False, description='Credit card settlement (details in PDF)'),
+    Category(id='mastercard', name='Mastercard afrekening', type='excluded', tax_deductible=False, description='Credit card settlement (details in statement)'),
     Category(id='prive-opname', name='Privé-opname', type='excluded', tax_deductible=False, description='Private withdrawals'),
     Category(id='voorafbetaling', name='Voorafbetaling belasting', type='excluded', tax_deductible=False, description='Tax prepayments'),
 ]
@@ -203,6 +209,25 @@ def init_session_state():
 
     if 'rules' not in st.session_state:
         st.session_state.rules = DEFAULT_RULES.copy()
+
+    # Session state export/import variables
+    if 'company_name' not in st.session_state:
+        st.session_state.company_name = ''
+
+    if 'custom_rules_loaded' not in st.session_state:
+        st.session_state.custom_rules_loaded = False
+
+    if 'custom_categories_loaded' not in st.session_state:
+        st.session_state.custom_categories_loaded = False
+
+    if 'custom_rules_content' not in st.session_state:
+        st.session_state.custom_rules_content = None
+
+    if 'custom_categories_content' not in st.session_state:
+        st.session_state.custom_categories_content = None
+
+    if 'uploaded_files_content' not in st.session_state:
+        st.session_state.uploaded_files_content = {}
 
 
 # =============================================================================
@@ -374,6 +399,18 @@ def main():
     with st.sidebar:
         st.header("Instellingen")
 
+        # Company name input (T037)
+        company_name = st.text_input(
+            "Bedrijfsnaam",
+            value=st.session_state.company_name,
+            key="company_name_input",
+            placeholder="bijv. Vroedvrouw Goedele",
+            help="Wordt gebruikt in de bestandsnaam bij het exporteren van je sessie",
+        )
+
+        if company_name != st.session_state.company_name:
+            st.session_state.company_name = company_name
+
         # Fiscal year selector
         fiscal_year = st.selectbox(
             "Boekjaar",
@@ -404,6 +441,8 @@ def main():
             if parsed_rules and parsed_rules != st.session_state.rules:
                 st.session_state.rules = parsed_rules
                 st.session_state.categorization_done = False
+                st.session_state.custom_rules_loaded = True
+                st.session_state.custom_rules_content = rules_content
                 st.success(f"✅ {len(parsed_rules)} regels geladen")
                 st.rerun()
 
@@ -420,6 +459,8 @@ def main():
             parsed_categories = parse_categories_yaml(categories_content)
             if parsed_categories and parsed_categories != st.session_state.categories:
                 st.session_state.categories = parsed_categories
+                st.session_state.custom_categories_loaded = True
+                st.session_state.custom_categories_content = categories_content
                 st.success(f"✅ {len(parsed_categories)} categorieën geladen")
                 st.rerun()
 
@@ -432,11 +473,141 @@ def main():
             st.divider()
             st.metric("Transacties", len(st.session_state.transactions))
 
-        # Session timeout message
+        # =================================================================
+        # Session Export/Import (T019-T021, T029)
+        # =================================================================
+        st.divider()
+        st.subheader("Sessie")
+
+        # Export section - visible when transactions exist (T019)
+        if st.session_state.transactions:
+            # Checkbox for source files inclusion (T020)
+            include_source_files = st.checkbox(
+                "Bronbestanden toevoegen",
+                value=False,
+                key="export_include_source",
+                help="Voeg de originele bronbestanden toe aan het exportbestand",
+            )
+
+            # Create export ZIP (T021)
+            try:
+                # First create the state dict
+                state_dict = session_to_dict(
+                    transactions=st.session_state.transactions,
+                    existing_ids=st.session_state.existing_ids,
+                    fiscal_year=st.session_state.fiscal_year,
+                    categorization_done=st.session_state.categorization_done,
+                    import_stats=st.session_state.import_stats,
+                    company_name=st.session_state.company_name or 'sessie',
+                    custom_rules_loaded=st.session_state.custom_rules_loaded,
+                    custom_categories_loaded=st.session_state.custom_categories_loaded,
+                )
+
+                # Then create the ZIP
+                zip_bytes = create_export_zip(
+                    state_dict=state_dict,
+                    custom_rules_content=st.session_state.custom_rules_content if st.session_state.custom_rules_loaded else None,
+                    custom_categories_content=st.session_state.custom_categories_content if st.session_state.custom_categories_loaded else None,
+                    source_files=st.session_state.uploaded_files_content if include_source_files else None,
+                    include_source_files=include_source_files,
+                )
+
+                export_filename = get_export_filename(
+                    company_name=st.session_state.company_name or 'sessie',
+                    fiscal_year=st.session_state.fiscal_year,
+                )
+
+                st.download_button(
+                    label="📦 Exporteer sessie",
+                    data=zip_bytes,
+                    file_name=export_filename,
+                    mime="application/zip",
+                    help="Download een ZIP-bestand met je huidige sessiegegevens om later verder te werken",
+                )
+            except Exception as e:
+                st.error(f"Export fout: {str(e)}")
+
+        # Import section (T029)
+        import_file = st.file_uploader(
+            "Importeer sessie",
+            type=['zip'],
+            key="session_import",
+            help="Upload een eerder geëxporteerde sessie om verder te werken",
+        )
+
+        if import_file is not None:
+            try:
+                zip_content = import_file.read()
+
+                # Validate ZIP structure (returns 3 values)
+                is_valid, error_msg, _ = validate_import_zip(zip_content)
+                if not is_valid:
+                    st.error(f"Ongeldig sessiebestand: {error_msg}")
+                else:
+                    # Show confirmation if we have existing data (T030)
+                    has_existing_data = bool(st.session_state.transactions)
+
+                    if has_existing_data:
+                        st.warning("⚠️ Dit zal je huidige sessiegegevens vervangen!")
+
+                    if st.button("Importeren", key="confirm_import", type="primary"):
+                        # Perform import (T026-T028) - returns 5 values
+                        success, message, state_dict, rules_content, categories_content = import_session_zip(zip_content)
+
+                        if not success:
+                            st.error(message)
+                        else:
+                            # Convert state_dict to session values
+                            (
+                                transactions,
+                                existing_ids,
+                                fiscal_year,
+                                categorization_done,
+                                import_stats,
+                                company_name,
+                                custom_rules_loaded,
+                                custom_categories_loaded,
+                            ) = dict_to_session(state_dict)
+
+                            # Restore session state
+                            st.session_state.transactions = transactions
+                            st.session_state.existing_ids = existing_ids
+                            st.session_state.fiscal_year = fiscal_year
+                            st.session_state.categorization_done = categorization_done
+                            st.session_state.import_stats = import_stats
+                            st.session_state.company_name = company_name
+                            st.session_state.custom_rules_loaded = custom_rules_loaded
+                            st.session_state.custom_categories_loaded = custom_categories_loaded
+
+                            # Restore rules if present
+                            if rules_content:
+                                parsed_rules = parse_rules_yaml(rules_content)
+                                if parsed_rules:
+                                    st.session_state.rules = parsed_rules
+                                    st.session_state.custom_rules_content = rules_content
+
+                            # Restore categories if present
+                            if categories_content:
+                                parsed_categories = parse_categories_yaml(categories_content)
+                                if parsed_categories:
+                                    st.session_state.categories = parsed_categories
+                                    st.session_state.custom_categories_content = categories_content
+
+                            # Show success message (T031)
+                            tx_count = len(st.session_state.transactions)
+                            st.success(f"✅ Sessie geïmporteerd: {tx_count} transacties hersteld")
+
+                            st.rerun()
+
+            except Exception as e:
+                # Display error message (T032)
+                st.error(f"Import fout: {str(e)}")
+
+        # Session info message
         st.divider()
         st.caption(
-            "ℹ️ Sessiegegevens worden gewist bij sluiten van de browser. "
-            "Upload bestanden opnieuw om te hervatten."
+            "💡 Exporteer je sessie om later verder te werken. "
+            "Sessiegegevens worden gewist bij sluiten van de browser."
         )
 
         # Debug expander
@@ -461,7 +632,7 @@ def main():
         "Sleep bank- en kredietkaartafschriften hierheen",
         type=['csv', 'pdf'],
         accept_multiple_files=True,
-        help="CSV: Belfius bankafschriften | PDF: Mastercard statements",
+        help="Belfius bankafschriften en Mastercard statements",
     )
 
     # Import Button and Processing (T012, T013, T014, T016, T017, T018)
@@ -594,6 +765,15 @@ def display_pnl_summary():
     )
     report = generator.generate_pnl_report(st.session_state.fiscal_year)
 
+    uncategorized_count = len(report.uncategorized_items)
+    if uncategorized_count:
+        st.warning(
+            f"⚠️ {uncategorized_count} niet-gecategoriseerde transactie(s) "
+            f"({format_belgian_currency(report.total_uncategorized)}) "
+            "zijn niet opgenomen in deze resultatenrekening. "
+            "Categoriseer deze eerst voor een volledig beeld."
+        )
+
     # P&L Summary Cards (T025, T031)
     st.subheader("Resultatenrekening")
 
@@ -703,7 +883,7 @@ def display_download_section(report: Report):
 
     # Group download buttons in expander (T038)
     with st.expander("Download opties", expanded=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
 
         # Excel Report (T032, T033)
         with col1:
@@ -717,20 +897,8 @@ def display_download_section(report: Report):
                     width="stretch",
                 )
 
-        # PDF Jaarverslag (T034, T035)
-        with col2:
-            pdf_bytes = generate_pdf_jaarverslag(report)
-            if pdf_bytes:
-                st.download_button(
-                    label="Download PDF Jaarverslag",
-                    data=pdf_bytes,
-                    file_name=f"Jaarverslag_{st.session_state.fiscal_year}.pdf",
-                    mime="application/pdf",
-                    width="stretch",
-                )
-
         # CSV Export (T036, T037)
-        with col3:
+        with col2:
             csv_bytes = generate_transactions_csv()
             if csv_bytes:
                 st.download_button(
@@ -744,89 +912,20 @@ def display_download_section(report: Report):
 
 def generate_excel_report(report: Report) -> Optional[bytes]:
     """Generate Excel report in memory (T033)."""
-    import pandas as pd
-
     try:
-        # Create Excel file in memory
+        # Create Excel file in memory using the same generator as the CLI.
         output = io.BytesIO()
-
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Summary sheet
-            summary_data = {
-                'Omschrijving': ['Totaal Inkomsten', 'Totaal Kosten', 'Netto Resultaat'],
-                'Bedrag (EUR)': [
-                    float(report.total_income),
-                    float(abs(report.total_expenses)),
-                    float(report.profit_loss),
-                ],
-            }
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_excel(writer, sheet_name='Samenvatting', index=False)
-
-            # Expense breakdown sheet
-            categories_dict = {cat.id: cat for cat in st.session_state.categories}
-            expense_data = []
-            for item in report.expense_items:
-                cat_name = categories_dict.get(item.category, None)
-                cat_display = cat_name.name if cat_name else item.category
-                expense_data.append({
-                    'Categorie': cat_display,
-                    'Bedrag (EUR)': float(abs(item.amount)),
-                })
-            if expense_data:
-                expense_df = pd.DataFrame(expense_data)
-                expense_df = expense_df.sort_values('Bedrag (EUR)', ascending=False)
-                expense_df.to_excel(writer, sheet_name='Kosten', index=False)
-
-            # Transactions sheet
-            tx_data = []
-            for tx in st.session_state.transactions:
-                tx_data.append({
-                    'Datum': tx.booking_date,
-                    'Bedrag': float(tx.amount),
-                    'Tegenpartij': tx.counterparty_name or '',
-                    'Omschrijving': tx.description or '',
-                    'Categorie': tx.category or '',
-                    'Bron': tx.source_type,
-                })
-            if tx_data:
-                tx_df = pd.DataFrame(tx_data)
-                tx_df = tx_df.sort_values('Datum', ascending=False)
-                tx_df.to_excel(writer, sheet_name='Transacties', index=False)
-
+        categories_dict = {cat.id: cat for cat in st.session_state.categories}
+        generator = ReportGenerator(
+            transactions=st.session_state.transactions,
+            assets=[],  # No assets for now
+            categories=categories_dict,
+        )
+        generator.export_to_excel(report, output)
         output.seek(0)
         return output.getvalue()
-
     except Exception as e:
         st.error(f"Fout bij genereren Excel rapport: {e}")
-        return None
-
-
-def generate_pdf_jaarverslag(report: Report) -> Optional[bytes]:
-    """Generate PDF Jaarverslag in memory (T035)."""
-    try:
-        # Create temp file for PDF output
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-
-        # Generate PDF (no company - stateless session)
-        generator = PDFReportGenerator(
-            transactions=st.session_state.transactions,
-            report=report,
-            assets=[],
-            company=None,  # Stateless - no company
-        )
-        generator.generate(tmp_path)
-
-        # Read bytes and clean up
-        with open(tmp_path, 'rb') as f:
-            pdf_bytes = f.read()
-
-        tmp_path.unlink()  # Delete temp file
-        return pdf_bytes
-
-    except Exception as e:
-        st.error(f"Fout bij genereren PDF Jaarverslag: {e}")
         return None
 
 
@@ -951,14 +1050,14 @@ def process_uploaded_files(uploaded_files):
                     except Exception as pdf_error:
                         all_errors.append({
                             'file': filename,
-                            'message': f'PDF kon niet worden gelezen: {str(pdf_error)}',
+                        'message': f'Kaartafschrift kon niet worden gelezen: {str(pdf_error)}',
                         })
                         continue
                 else:
                     # Invalid file type (T016)
                     all_errors.append({
                         'file': filename,
-                        'message': 'Ongeldig bestandsformaat - alleen CSV en PDF worden ondersteund',
+                        'message': 'Ongeldig bestandsformaat - alleen ondersteunde bestandsformaten worden geaccepteerd',
                     })
                     continue
 
@@ -973,6 +1072,9 @@ def process_uploaded_files(uploaded_files):
                 # Update existing_ids for duplicate detection (T014)
                 for tx in transactions:
                     st.session_state.existing_ids.add(tx.id)
+
+                # Store file content for potential export (T018)
+                st.session_state.uploaded_files_content[filename] = file_content
 
                 # Accumulate stats
                 total_imported += session.transactions_imported

@@ -3,7 +3,7 @@
 import logging
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import BinaryIO, Dict, List, Set
 
 import pandas as pd
 from openpyxl import Workbook
@@ -155,7 +155,7 @@ class ReportGenerator:
 
         return report
 
-    def export_to_excel(self, report: Report, output_path: Path) -> None:
+    def export_to_excel(self, report: Report, output_path: Path | BinaryIO) -> None:
         """
         Exports the P&L report to a formatted Excel file with transactions tab.
         """
